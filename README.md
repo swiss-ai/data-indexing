@@ -16,7 +16,8 @@ cd /path/to/data-indexing
 ./serving/launch.sh --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM. If the index isn't on scratch, it automatically restores from the capstor snapshot.
+This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn't on scratch, it automatically restores from the capstor snapshot (~5 min) — no flags needed.
+
 **Options:**
 
 | Flag | Description | Default |
@@ -24,27 +25,49 @@ This starts a 5-node Elasticsearch cluster on SLURM. If the index isn't on scrat
 | `--nodes N` | SLURM nodes for ES cluster | `5` |
 | `--restore` | Force restore from snapshot (automatic when local data is absent) | — |
 | `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
-| `--index NAME` | ES index name | `global-pretraining` |
-| `--data-dir DIR` | ES data directory on scratch | `$SCRATCH/es-data-global-pretraining` |
+| `--index NAME` | ES index name | `apertus-data` |
+| `--data-dir DIR` | ES data directory on scratch | `$SCRATCH/es-data-apertus-data` |
 
 ### 2. Search from the command line
 
-Install once:
+Install once — no PATH editing needed:
 
 ```bash
 uv tool install --editable /path/to/data-indexing/serving/
 ```
 
-Then search from anywhere — the running cluster is auto-detected:
+The running cluster is auto-detected. Basic usage:
 
 ```bash
 apertus-search "attention is all you need"
 apertus-search "gradient descent" --dataset wikipedia --language eng
 apertus-search "RLHF" -n 20
-apertus-search --list-datasets
-apertus-search --list-languages
-apertus-search "instruction tuning" --text-only | head -100
-apertus-search --help
+```
+
+Explore the corpus:
+
+```bash
+apertus-search --list-datasets       # doc counts and % per dataset
+apertus-search --list-languages      # doc counts and % per language
+```
+
+Save results as structured JSON — useful for downstream processing or large-scale extraction:
+
+```bash
+# auto-named file in ./results/
+apertus-search "instruction tuning" -n 100 --json
+
+# explicit filename in ./results/
+apertus-search "instruction tuning" -n 100 --json tuning.jsonl
+```
+
+Each line is a JSON object with `text`, `datasets`, `language`, `date`, `source_count`, `sources[]`, `_id`, and `_score`. The `sources[]` array gives full provenance — original file path, URL, author, title, etc.
+
+Pipe plain text for scripting:
+
+```bash
+apertus-search "machine learning" -n 1000 --text-only | wc -l
+apertus-search "code generation" --dataset starcoder --text-only > docs.txt
 ```
 
 To uninstall: `uv tool uninstall apertus-search`
@@ -73,6 +96,67 @@ Then open `http://localhost:8888`. Keep the tunnel terminal open; Ctrl-C to clos
 
 ---
 
+## Advanced: raw ES queries
+
+Once the cluster is running, the Elasticsearch HTTP API is directly accessible for arbitrary queries, aggregations, or large-scale extraction. Get the host from the info file:
+
+```bash
+ES_HOST=$(grep ^ES_HOST $SCRATCH/es-cluster-apertus-data.info | cut -d= -f2)
+```
+
+Full-text search with filters:
+
+```bash
+curl -s "http://$ES_HOST:9200/apertus-data/_search" \
+  -H "Content-Type: application/json" -d '{
+    "query": {
+      "bool": {
+        "must":   { "match": { "text": "attention mechanism" } },
+        "filter": { "terms": { "datasets": ["wikipedia"] } }
+      }
+    },
+    "size": 10
+  }' | python3 -m json.tool
+```
+
+Aggregations — e.g. doc count per dataset per language:
+
+```bash
+curl -s "http://$ES_HOST:9200/apertus-data/_search" \
+  -H "Content-Type: application/json" -d '{
+    "size": 0,
+    "aggs": {
+      "by_dataset": {
+        "terms": { "field": "datasets", "size": 50 },
+        "aggs": {
+          "by_language": { "terms": { "field": "language", "size": 20 } }
+        }
+      }
+    }
+  }' | python3 -m json.tool
+```
+
+Scroll API for bulk extraction (>10k docs):
+
+```bash
+# Open scroll
+curl -s "http://$ES_HOST:9200/apertus-data/_search?scroll=2m" \
+  -H "Content-Type: application/json" -d '{
+    "query": { "term": { "datasets": "wikipedia" } },
+    "size": 1000, "_source": ["text", "language", "sources"]
+  }' > page1.json
+
+# Continue with scroll_id
+SCROLL_ID=$(python3 -c "import json,sys; print(json.load(open('page1.json'))['_scroll_id'])")
+curl -s "http://$ES_HOST:9200/_search/scroll" \
+  -H "Content-Type: application/json" \
+  -d "{\"scroll\": \"2m\", \"scroll_id\": \"$SCROLL_ID\"}" > page2.json
+```
+
+The [Elasticsearch 7.17 query DSL docs](https://www.elastic.co/guide/en/elasticsearch/reference/7.17/query-dsl.html) cover the full range of query types (fuzzy, phrase, range, geo, more-like-this, etc.).
+
+---
+
 ## Smoke tests
 
 Run against any live cluster to verify correctness:
@@ -80,7 +164,7 @@ Run against any live cluster to verify correctness:
 ```bash
 pip install "elasticsearch>=7.0,<8.0"
 
-python3 tests/smoke_test.py --es-host <es-host> --es-port 9200 --index global-pretraining
+python3 tests/smoke_test.py --es-host <es-host> --es-port 9200 --index apertus-data
 ```
 
 25 tests cover cluster health, doc counts, full-text search, language/date filtering, SHA-256 deduplication, and field correctness for every dataset type.
