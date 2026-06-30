@@ -48,7 +48,7 @@ All paths are configurable. The most important ones for `submit_index_jobs.sh`:
 | `CAPSTOR_BASE` | Base path for first-pass raw datasets | `/capstor/store/cscs/swissai/infra01/datasets/swiss-ai` |
 | `INFRA01_BASE` | Base path for second-pass datasets (Wikipedia, math, code) | `/capstor/store/cscs/swissai/infra01` |
 | `POSTTRAIN_PRE_BASE` | Base path for post-training datasets (alignment, SFT) | `/capstor/store/cscs/swissai/a145/es_indices_2026/posttrain_preprocessing` |
-| `SNAPSHOT_REPO_PATH` | Filesystem path for ES snapshots | `/capstor/store/cscs/swissai/a145/es_indices_2026/snapshots` |
+| `SNAPSHOT_REPO_PATH` | Filesystem path for ES snapshots | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
 | `SCRATCH` | Scratch filesystem root | `/iopsstor/scratch/cscs/$USER` |
 | `ES_ENV` | Container environment name | `es-python` |
 
@@ -133,27 +133,82 @@ sbatch \
 
 ## 2. Serving
 
-### 2.1 Start the server
+### 2.1 Start everything
+
+One script handles it all — starts the ES cluster via SLURM (or reuses an existing one), then launches the web server:
 
 ```bash
-ES_HOST=<es-node-hostname> \
-ES_PORT=9200 \
-ES_INDEX=my-index \
-PORT=8888 \
-./serving/website/run.sh
+cd /path/to/data-indexing
+./serving/launch.sh
 ```
 
-The script creates a `.venv` in `serving/website/` on first run, installs dependencies, and prints SSH tunnel instructions.
+The script:
+1. Checks for a running cluster (via `$SCRATCH/es-cluster-global-pretraining.info`)
+2. If none found, submits a SLURM cluster job and waits for it to become healthy (~2-4 min)
+3. Starts the FastAPI web server on port 8888
+4. Prints the SSH tunnel command to access the UI from your laptop
 
-### 2.2 Access the UI
+**Options:**
 
-From your laptop:
+| Flag | Description | Default |
+|---|---|---|
+| `--index NAME` | ES index name | `global-pretraining` |
+| `--nodes N` | SLURM nodes for ES cluster | `5` |
+| `--port PORT` | Web server port | `8888` |
+| `--data-dir DIR` | ES data directory | `$SCRATCH/es-data-global-pretraining` |
+| `--es-only` | Start ES cluster only, skip web server | — |
+| `--restore` | Restore from capstor snapshot (use if scratch was purged) | — |
+| `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
+
+**Restore from snapshot** (needed only if scratch was purged or on a new machine):
 
 ```bash
-ssh -L 8888:localhost:8888 user@<server-hostname>
+./serving/launch.sh --restore
+# Adds ~1-2h for snapshot restore before the web server starts
 ```
 
-Then open `http://localhost:8888`.
+### 2.2 Access via browser (port-forwarding)
+
+The web server runs on a CSCS login node, which is not directly reachable from outside the cluster. Access it from your laptop via an SSH tunnel:
+
+```bash
+# Run this on your laptop (replace <login-node> with what launch.sh prints):
+ssh -N -L 8888:localhost:8888 <your-cscs-username>@<login-node>
+```
+
+Then open `http://localhost:8888` in your browser.
+
+The `-N` flag keeps the tunnel open without running a command. Keep this terminal window open while using the UI; Ctrl-C to close the tunnel.
+
+**ProxyJump (if login node is behind a bastion):**
+
+```bash
+ssh -N -L 8888:localhost:8888 -J <bastion> <user>@<login-node>
+```
+
+### 2.3 Access via command line
+
+Install once — no PATH editing needed, `uv` puts the command directly in `~/.local/bin`:
+
+```bash
+uv tool install --editable /path/to/data-indexing/serving/
+```
+
+Then search from anywhere — the running cluster is auto-detected:
+
+```bash
+apertus-search "transformer architecture"
+apertus-search "diffusion models" --dataset wikipedia --language eng
+apertus-search "reinforcement learning" -n 20
+apertus-search --list-datasets
+apertus-search --list-languages
+apertus-search "machine learning" --text-only | head -100
+apertus-search --help
+```
+
+To pick up code changes (since it's an editable install): no action needed, changes take effect immediately.
+
+To uninstall: `uv tool uninstall apertus-search`
 
 ---
 
@@ -181,15 +236,16 @@ python3 tests/smoke_test.py \
 | `--dataset` value | Format | Key metadata |
 |---|---|---|
 | `europarl`, `paradocs` | Parquet | `language_pair` from directory name |
-| `flan`, `euroblocks` | Parquet | English assumed |
+| `flan` | Parquet | English assumed |
+| `euroblocks` | Parquet | Multilingual; no language field — `language` left empty |
 | `institutional-books` | Parquet | `author`, `title`, `date`, `language` |
 | `wikipedia` | Parquet | `language` (iso639-3 column) |
 | `gutenberg` | JSONL | `language` |
-| `canaries` | JSONL.gz | `canary_idx` as id |
+| `canaries` | JSONL.gz | — |
 | `stackv2-edu` | JSONL.gz | `url`, `date`, `score` |
 | `finemath`, `infiwebmath`, `megamath-web` | Parquet | `language`, `url`, `score` |
 | `starcoder`, `starcoder-extras` | Parquet | `repo_name`, quality score |
-| `alignment`, `sft-mixture` | Parquet | — |
+| `alignment`, `sft-mixture` | Parquet | `id` = `{shard_filename}:{row_within_shard}`, e.g. `sft-merged-0007.parquet:23104` — lets you seek directly to the source row |
 
 `index_aggregated.py` — Spark-deduplicated parquet (has `sha256` column pre-computed):
 - FineWeb-1 + FineWeb-edu + DCLM (global merge)

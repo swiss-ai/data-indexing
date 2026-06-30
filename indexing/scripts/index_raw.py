@@ -7,7 +7,8 @@ index_aggregated.py instead (sha256 is already in the parquet).
 
 This script handles:
   - EuroParl, ParaDocs   — translation pairs, language from dir name
-  - FLAN, EuroBlocks      — English-only
+  - FLAN                  — English-only
+  - EuroBlocks            — multilingual (no language field in parquet)
   - institutional-books   — rich metadata (author, title, date, language)
   - gutenberg             — JSONL files
   - canaries              — gzipped JSONL files
@@ -237,7 +238,7 @@ def extract_metadata_parquet(dataset: str, i: int, rows: dict,
                     language_pair=pair, author=None, title=None)
 
     elif dataset == "euroblocks":
-        return dict(id=_row_get(rows, "id", i), language=["eng"], date=None,
+        return dict(id=_row_get(rows, "id", i), language=[], date=None,
                     url=None, language_score=None, folder_path=folder_path,
                     language_pair=None, author=None, title=None)
 

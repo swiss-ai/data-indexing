@@ -23,7 +23,7 @@
 # Optional env vars:
 #   SNAPSHOT_NAME  - name for the snapshot (default: snapshot-<date>)
 #   REPO_PATH      - filesystem path for the snapshot repo
-#                    (default: /capstor/store/cscs/swissai/a145/es_indices_2026/snapshots)
+#                    (default: /capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index)
 #   INFO_WAIT_SECS - seconds to wait for cluster info file (default: 3600)
 # ============================================================
 
@@ -31,7 +31,7 @@ set -euo pipefail
 
 INDEX_NAME="${INDEX_NAME:?INDEX_NAME must be set}"
 SNAPSHOT_NAME="${SNAPSHOT_NAME:-snapshot-$(date +%Y%m%d-%H%M%S)}"
-REPO_PATH="${REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/snapshots}"
+REPO_PATH="${REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index}"
 REPO_NAME="capstor-a145"
 INFO_WAIT_SECS="${INFO_WAIT_SECS:-3600}"
 

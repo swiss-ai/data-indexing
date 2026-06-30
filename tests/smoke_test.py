@@ -180,16 +180,16 @@ def run_all(s: Suite, expected_datasets: List[str]) -> None:
         return ok, f"sample ids: {ids}"
     s.run("Gutenberg: sources[0].id has synthetic filename:line format", t_gutenberg_id)
 
-    # ---- 10. Canaries: sources[0].id is an integer (canary_idx) ----
-    def t_canaries_id():
+    # ---- 10. Canaries: sources[0].dataset == 'canaries' ----
+    def t_canaries_source():
         r = s._search({"size": 3, "query": {"term": {"datasets": "canaries"}}})
         hits = r["hits"]["hits"]
         if not hits:
             return False, "no canaries docs"
-        ids = [h["_source"]["sources"][0].get("id") for h in hits if h["_source"].get("sources")]
-        ok = all(isinstance(i, int) for i in ids)
-        return ok, f"sample ids: {ids}"
-    s.run("Canaries: sources[0].id is integer (canary_idx)", t_canaries_id)
+        sources = [h["_source"].get("sources", [{}])[0] for h in hits]
+        ok = all(src.get("dataset") == "canaries" for src in sources)
+        return ok, f"sample sources[0].dataset: {[s.get('dataset') for s in sources]}"
+    s.run("Canaries: sources[0].dataset == 'canaries'", t_canaries_source)
 
     # ---- 11. Institutional-books: author and title in sources[0] ----
     def t_instbooks_metadata():
@@ -313,6 +313,41 @@ def run_all(s: Suite, expected_datasets: List[str]) -> None:
         return len(bad) == 0, f"{len(bad)} docs where sources[].dataset not in datasets[]  examples={bad[:2]}"
     s.run("sources[].dataset values are all in datasets[]", t_sources_dataset_consistent)
 
+    # ---- 23. EuroBlocks: language field is empty (multilingual, not English-only) ----
+    def t_euroblocks_no_language():
+        r = s._search({"size": 10, "query": {"term": {"datasets": "euroblocks"}}})
+        hits = r["hits"]["hits"]
+        if not hits:
+            return False, "no euroblocks docs"
+        with_lang = [h for h in hits if h["_source"].get("language")]
+        return len(with_lang) == 0, (
+            f"{len(with_lang)}/{len(hits)} docs unexpectedly have language set "
+            f"(expected empty — euroblocks is multilingual)"
+        )
+    s.run("EuroBlocks: language[] is empty (multilingual dataset)", t_euroblocks_no_language)
+
+    # ---- 24. SFT-mixture: sources[0].id has shard:row format ----
+    def t_sft_id_format():
+        r = s._search({"size": 5, "query": {"term": {"datasets": "sft-mixture"}}})
+        hits = r["hits"]["hits"]
+        if not hits:
+            return False, "no sft-mixture docs"
+        ids = [h["_source"].get("sources", [{}])[0].get("id", "") for h in hits]
+        ok = all((".parquet:" in str(i) and "sft-merged-" in str(i)) for i in ids)
+        return ok, f"sample ids: {ids[:3]}"
+    s.run("SFT-mixture: sources[0].id is 'sft-merged-NNNN.parquet:ROW'", t_sft_id_format)
+
+    # ---- 25. Alignment: sources[0].id has shard:row format ----
+    def t_alignment_id_format():
+        r = s._search({"size": 5, "query": {"term": {"datasets": "alignment"}}})
+        hits = r["hits"]["hits"]
+        if not hits:
+            return False, "no alignment docs"
+        ids = [h["_source"].get("sources", [{}])[0].get("id", "") for h in hits]
+        ok = all((".parquet:" in str(i) and "alignment-merged-" in str(i)) for i in ids)
+        return ok, f"sample ids: {ids[:3]}"
+    s.run("Alignment: sources[0].id is 'alignment-merged-NNNN.parquet:ROW'", t_alignment_id_format)
+
 
 # ============================================================
 # Main
@@ -323,10 +358,15 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--es-host",   default=os.environ.get("MASTER_NODE", "localhost"))
     parser.add_argument("--es-port",   type=int, default=int(os.environ.get("ES_PORT", "9200")))
-    parser.add_argument("--index",     default=os.environ.get("INDEX_NAME", "sample-raw-only"))
+    parser.add_argument("--index",     default=os.environ.get("INDEX_NAME", "global-pretraining"))
     parser.add_argument("--datasets",  nargs="+",
-                        default=["fineweb-2", "europarl", "paradocs", "flan",
-                                 "euroblocks", "institutional-books", "gutenberg", "canaries"],
+                        default=[
+                            "fineweb-1", "fineweb-edu", "dclm", "fineweb-2",
+                            "starcoder", "paradocs", "europarl", "wikipedia",
+                            "stackv2-edu", "megamath-web", "finemath", "infiwebmath",
+                            "starcoder-extras", "sft-mixture", "flan", "alignment",
+                            "euroblocks", "institutional-books", "canaries", "gutenberg",
+                        ],
                         help="Datasets expected in the index")
     args = parser.parse_args()
 
@@ -347,7 +387,7 @@ def main():
         sys.exit(1)
 
     es.indices.refresh(index=args.index)
-    print(f"\nRunning {22} tests against '{args.index}':\n")
+    print(f"\nRunning tests against '{args.index}':\n")
 
     s = Suite(es, args.index)
     run_all(s, args.datasets)

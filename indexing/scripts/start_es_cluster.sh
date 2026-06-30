@@ -33,7 +33,7 @@
 #   ES_HEAP             - JVM heap flags (default: -Xms200g -Xmx200g)
 #   ES_ENV              - container environment name (default: es-python)
 #   SNAPSHOT_REPO_PATH  - filesystem path for ES snapshot repository
-#                         (default: /capstor/store/cscs/swissai/a145/es_indices_2026/snapshots)
+#                         (default: /capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index)
 # ============================================================
 
 set -euo pipefail
@@ -46,7 +46,7 @@ ES_PORT=9200
 ES_ENV="${ES_ENV:-es-python}"
 ES_HEAP="${ES_HEAP:--Xms200g -Xmx200g}"
 NUM_NODES="${SLURM_NNODES:?}"
-SNAPSHOT_REPO_PATH="${SNAPSHOT_REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/snapshots}"
+SNAPSHOT_REPO_PATH="${SNAPSHOT_REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index}"
 
 REPO_DIR="${REPO_DIR:-}"
 if [[ -z "$REPO_DIR" ]]; then
