@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apertus Data Search</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚗</text></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <button class="brand" id="home-btn" title="Home" aria-label="Go to home">
+      <span class="brand-icon">⚗</span>
+      <div class="brand-text">
+        <h1>Apertus Data Search</h1>
+        <p>Swiss-AI Pretraining &amp; Posttraining Corpus</p>
+      </div>
+    </button>
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+        </svg>
+        <input type="text" id="search-input"
+               placeholder="Search billions of training documents…"
+               autocomplete="off" spellcheck="false" aria-label="Search">
+        <button id="clear-btn" class="clear-btn" aria-label="Clear search" title="Clear">✕</button>
+      </div>
+      <button id="search-btn" class="search-btn">Search</button>
+    </div>
+    <nav class="header-nav">
+      <button class="nav-btn" data-panel="about">About</button>
+      <button class="nav-btn" data-panel="people">People</button>
+    </nav>
+  </div>
+  <div id="status-bar" class="status-bar">
+    <span id="status-text">Connecting to Elasticsearch…</span>
+  </div>
+</header>
+
+<!-- Sliding info panels -->
+<div id="panel-about" class="info-panel" aria-hidden="true">
+  <div class="panel-body" id="about-content"></div>
+</div>
+<div id="panel-people" class="info-panel" aria-hidden="true">
+  <div class="panel-body" id="people-content"></div>
+</div>
+
+<div class="layout" id="main-layout">
+  <aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-section">
+      <h3 class="sidebar-title">
+        Datasets
+        <span id="badge-datasets" class="active-badge" hidden></span>
+      </h3>
+      <div id="dataset-filters"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3 class="sidebar-title">
+        Language
+        <span id="badge-langs" class="active-badge" hidden></span>
+      </h3>
+      <div class="null-note">
+        Some datasets carry no language metadata (code, FLAN, EuroBlocks, canaries, posttraining).
+      </div>
+      <label class="null-toggle">
+        <input type="checkbox" id="incl-no-lang"> Include documents without language data
+      </label>
+      <input type="text" id="lang-search" class="mini-input" placeholder="Filter by name or code…" aria-label="Filter languages" style="margin-top:8px">
+      <div id="language-filters"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3 class="sidebar-title">Date Range</h3>
+      <div class="null-note">
+        Date refers to the web crawl date. Most curated and posttraining datasets have no date.
+      </div>
+      <label class="null-toggle">
+        <input type="checkbox" id="incl-no-date"> Include documents without date
+      </label>
+      <div class="date-range" style="margin-top:8px">
+        <label>From<input type="date" id="date-from" class="date-input"></label>
+        <label>To<input type="date" id="date-to" class="date-input"></label>
+      </div>
+    </div>
+
+    <button id="reset-btn" class="reset-btn">Reset all filters</button>
+  </aside>
+
+  <main class="results-area" id="results-area">
+    <div id="results-header" class="results-header"></div>
+    <div id="results-list">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">⚗</div>
+        <p>Enter a query to search the corpus</p>
+        <p class="empty-sub">BM25 full-text search across all datasets</p>
+      </div>
+    </div>
+    <div id="pagination" class="pagination"></div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

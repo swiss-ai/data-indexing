@@ -1,0 +1,2 @@
+elasticsearch>=7.0,<8.0
+pyarrow>=10.0
