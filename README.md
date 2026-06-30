@@ -16,8 +16,7 @@ cd /path/to/data-indexing
 ./serving/launch.sh --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn't on scratch, it automatically restores from the capstor snapshot (~5 min) — no flags needed.
-
+This starts a 5-node Elasticsearch cluster on SLURM. If the index isn't on scratch, it automatically restores from the capstor snapshot.
 **Options:**
 
 | Flag | Description | Default |
