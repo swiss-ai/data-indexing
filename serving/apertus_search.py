@@ -14,6 +14,8 @@ Options:
     --date-from YYYY-MM-DD  Filter: from date
     --date-to   YYYY-MM-DD  Filter: to date
     --text-only             Print only full document text, one per line
+    --json [FILE]           Save results as newline-delimited JSON
+                            (auto-named under ./results/ if FILE omitted)
     --list-datasets         Dataset breakdown with doc counts
     --list-languages        Language breakdown with doc counts
     --es-host HOST          ES host  (auto-detected if omitted)
@@ -24,7 +26,7 @@ ES host is auto-detected from $SCRATCH/es-cluster-<index>.info if present,
 or from the ES_HOST environment variable. --es-host overrides both.
 """
 
-import argparse, json, os, re, shutil, sys, textwrap
+import argparse, datetime, json, os, re, shutil, sys, textwrap
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
@@ -168,6 +170,25 @@ def cmd_search(base, index, args):
             print()
         return
 
+    if args.json is not None:
+        outdir = os.path.join(os.getcwd(), "results")
+        os.makedirs(outdir, exist_ok=True)
+        if args.json:
+            outpath = os.path.join(outdir, args.json)
+        else:
+            slug = re.sub(r"[^a-z0-9]+", "-", " ".join(args.query).lower()).strip("-")
+            ts   = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            outpath = os.path.join(outdir, ("results-" + slug + "-" + ts + ".jsonl") if slug
+                                           else ("results-" + ts + ".jsonl"))
+        with open(outpath, "w") as f:
+            for hit in hits:
+                record = hit["_source"].copy()
+                record["_id"]    = hit["_id"]
+                record["_score"] = hit.get("_score")
+                f.write(json.dumps(record) + "\n")
+        print(f"\n  {green('✓')}  {len(hits)} results saved to {bold(outpath)}\n")
+        return
+
     # ── Header ───────────────────────────────────────────────────────
     print()
     parts = []
@@ -271,6 +292,7 @@ def main():
     ap.add_argument("--date-from",           metavar="YYYY-MM-DD")
     ap.add_argument("--date-to",             metavar="YYYY-MM-DD")
     ap.add_argument("--text-only",           action="store_true")
+    ap.add_argument("--json",                nargs="?", const="", metavar="FILE")
     ap.add_argument("--list-datasets",       action="store_true")
     ap.add_argument("--list-languages",      action="store_true")
     ap.add_argument("--es-host",             default=None)

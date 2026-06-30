@@ -13,9 +13,8 @@
 #   --port PORT         Web server port            (default: 8888)
 #   --data-dir DIR      ES data directory          (default: $SCRATCH/es-data-<INDEX>)
 #   --no-web            Skip starting the web server
-#   --restore           Restore from latest capstor snapshot instead of
-#                       using existing scratch data (slower but works
-#                       after scratch is purged)
+#   --restore           Force restore from capstor snapshot even if local
+#                       data exists (automatic when local data is absent)
 #   --snapshot-path P   Path to snapshot repo      (default: see below)
 #   --es-only           Start ES cluster only, skip web server
 #
@@ -118,15 +117,14 @@ fi
 # Step 2 — start cluster if needed
 # ══════════════════════════════════════════════════════════════════════
 if [[ "$CLUSTER_RUNNING" == false ]]; then
-    if [[ "$DO_RESTORE" == false && ! -d "$ES_DATA_DIR" ]]; then
+    # Auto-restore if scratch data dir is missing and no explicit --data-dir was given
+    if [[ -z "$_ES_DATA_DIR_OVERRIDE" && ! -d "$ES_DATA_DIR" ]]; then
         echo ""
-        echo "ERROR: ES data directory does not exist:"
-        echo "  $ES_DATA_DIR"
+        echo "  No local data found at ${ES_DATA_DIR}"
+        echo "  → Restoring from capstor snapshot automatically ..."
         echo ""
-        echo "Options:"
-        echo "  1. Re-run with --restore to restore from the capstor snapshot (takes ~1-2h)"
-        echo "  2. Specify a different data dir with --data-dir"
-        exit 1
+        DO_RESTORE=true
+        ES_DATA_DIR="${SCRATCH}/es-data-${INDEX_NAME}-restore"
     fi
 
     echo ""

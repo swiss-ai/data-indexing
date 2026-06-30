@@ -16,18 +16,14 @@ cd /path/to/data-indexing
 ./serving/launch.sh --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min) and prints the host once ready. If the index isn't on scratch anymore, restore it from the capstor snapshot first:
-
-```bash
-./serving/launch.sh --es-only --restore   # ~5 min to restore 17 TB from capstor
-```
+This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn't on scratch, it automatically restores from the capstor snapshot (~5 min) — no flags needed.
 
 **Options:**
 
 | Flag | Description | Default |
 |---|---|---|
 | `--nodes N` | SLURM nodes for ES cluster | `5` |
-| `--restore` | Restore from capstor snapshot (needed if scratch was purged) | — |
+| `--restore` | Force restore from snapshot (automatic when local data is absent) | — |
 | `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
 | `--index NAME` | ES index name | `global-pretraining` |
 | `--data-dir DIR` | ES data directory on scratch | `$SCRATCH/es-data-global-pretraining` |
