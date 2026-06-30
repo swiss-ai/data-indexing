@@ -16,7 +16,7 @@ cd /path/to/data-indexing
 ./serving/launch.sh --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min) and prints the host once ready. If the index isn't on scratch anymore, restore it from the capstor snapshot first:
+This starts a 5-node Elasticsearch cluster on SLURM and prints the host once ready. If the index isn't on scratch anymore, restore it from the capstor snapshot first:
 
 ```bash
 ./serving/launch.sh --es-only --restore   # ~5 min to restore 17 TB from capstor
