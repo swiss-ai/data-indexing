@@ -158,6 +158,7 @@ def cmd_search(base, index, args):
         body["highlight"] = {"fields": {"text": {
             "fragment_size": 480, "number_of_fragments": 1,
             "pre_tags": ["<mark>"], "post_tags": ["</mark>"],
+            "highlight_query": {"match_phrase": {"text": q}},
         }}}
 
     res  = _post(base, f"{index}/_search", body)
@@ -252,11 +253,13 @@ def cmd_search(base, index, args):
         plain_collapsed = re.sub(r"\s+", " ", _plain(source_text)).strip()
         wrapped_lines   = textwrap.wrap(plain_collapsed, _W - 6) or [""]
 
-        # Re-apply highlights to each wrapped line by looking for the marked terms
+        # Re-apply highlights to each wrapped line by looking for the marked terms.
+        # Use word boundaries so "you" doesn't light up inside "Youtube".
         marked_terms = re.findall(r"<mark>(.*?)</mark>", source_text)
         def reapply(line):
             for term in marked_terms:
-                line = line.replace(term, mark(term))
+                line = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)",
+                              mark(term), line, flags=re.IGNORECASE)
             return line
 
         for line in wrapped_lines[:4]:
