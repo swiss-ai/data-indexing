@@ -123,12 +123,32 @@ if not success:
     sys.exit(1)
 latest    = sorted(success, key=lambda s: s.get("start_time_in_millis", 0))[-1]
 snap_name = latest["snapshot"]
-print("Restoring snapshot: " + snap_name)
+snap_indices = latest.get("indices", [])
+print("Restoring snapshot: " + snap_name + "  (contains: " + str(snap_indices) + ")")
+
+# Build restore body — handle index name mismatch via rename if needed
+body = {"include_global_state": False}
+if index in snap_indices:
+    body["indices"] = index
+elif len(snap_indices) == 1:
+    src = snap_indices[0]
+    body["indices"] = src
+    body["rename_pattern"] = src
+    body["rename_replacement"] = index
+    print("Renaming snapshot index " + src + " -> " + index)
+    # Also delete the old name in case it exists
+    try:
+        req2 = Request(base + "/" + src, method="DELETE")
+        urlopen(req2)
+    except Exception:
+        pass
+else:
+    print("WARNING: snapshot indices " + str(snap_indices) + " don't match target " + index + "; restoring all")
 
 # Kick off restore (async)
 req = Request(
     base + "/_snapshot/" + repo + "/" + snap_name + "/_restore?wait_for_completion=false",
-    data=json.dumps({"indices": index, "include_global_state": False}).encode(),
+    data=json.dumps(body).encode(),
     headers={"Content-Type": "application/json"}, method="POST")
 print("Restore started:", json.load(urlopen(req)))
 
