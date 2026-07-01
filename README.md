@@ -1,6 +1,6 @@
 # Apertus Pretraining Data Search
 
-Full-text search over 4.85 billion documents from the Apertus pretraining corpus. Search by keyword, filter by dataset or language, and trace any document back to its source file.
+Full-text search over 4.85 billion documents from the Apertus pretraining and posttraining corpus. Search by keyword, filter by dataset or language, and trace any document back to its source file.
 
 - **`serving/`** — launch script, CLI search tool, and web UI
 - **`indexing/`** — build a new index from scratch (see [indexing/README.md](indexing/README.md))
