@@ -8,7 +8,7 @@
 #   ./serving/launch.sh [options]
 #
 # Options:
-#   --index NAME        ES index name              (default: global-pretraining)
+#   --index NAME        ES index name              (default: apertus-data)
 #   --nodes N           SLURM nodes for cluster    (default: 5)
 #   --port PORT         Web server port            (default: 8888)
 #   --data-dir DIR      ES data directory          (default: $SCRATCH/es-data-<INDEX>)
@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Defaults ──────────────────────────────────────────────────────────
-INDEX_NAME="${INDEX_NAME:-global-pretraining}"
+INDEX_NAME="${INDEX_NAME:-apertus-data}"
 NODES="${NODES:-5}"
 PORT="${PORT:-8888}"
 SCRATCH="${SCRATCH:-/iopsstor/scratch/cscs/${USER}}"

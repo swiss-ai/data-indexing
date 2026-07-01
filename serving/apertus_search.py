@@ -20,7 +20,7 @@ Options:
     --list-languages        Language breakdown with doc counts
     --es-host HOST          ES host  (auto-detected if omitted)
     --es-port PORT          ES port  (default: 9200)
-    --index NAME            Index name  (default: global-pretraining)
+    --index NAME            Index name  (default: apertus-data)
 
 ES host is auto-detected from $SCRATCH/es-cluster-<index>.info if present,
 or from the ES_HOST environment variable. --es-host overrides both.
@@ -297,7 +297,7 @@ def main():
     ap.add_argument("--list-languages",      action="store_true")
     ap.add_argument("--es-host",             default=None)
     ap.add_argument("--es-port",             default=os.environ.get("ES_PORT", "9200"))
-    ap.add_argument("--index",               default=os.environ.get("ES_INDEX", "global-pretraining"))
+    ap.add_argument("--index",               default=os.environ.get("ES_INDEX", "apertus-data"))
     ap.add_argument("-h", "--help",          action="store_true")
     args = ap.parse_args()
 

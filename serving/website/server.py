@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 ES_HOST = os.environ.get("ES_HOST", "localhost")
 ES_PORT = int(os.environ.get("ES_PORT", "9200"))
-ES_INDEX = os.environ.get("ES_INDEX", "global-pretraining")
+ES_INDEX = os.environ.get("ES_INDEX", "apertus-data")
 
 app = FastAPI(title="Apertus Data Search", docs_url=None, redoc_url=None)
 

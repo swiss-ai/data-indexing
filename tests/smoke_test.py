@@ -358,7 +358,7 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--es-host",   default=os.environ.get("MASTER_NODE", "localhost"))
     parser.add_argument("--es-port",   type=int, default=int(os.environ.get("ES_PORT", "9200")))
-    parser.add_argument("--index",     default=os.environ.get("INDEX_NAME", "global-pretraining"))
+    parser.add_argument("--index",     default=os.environ.get("INDEX_NAME", "apertus-data"))
     parser.add_argument("--datasets",  nargs="+",
                         default=[
                             "fineweb-1", "fineweb-edu", "dclm", "fineweb-2",

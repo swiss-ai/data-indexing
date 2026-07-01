@@ -10,7 +10,7 @@ VENV="$SCRIPT_DIR/.venv"
 
 export ES_HOST="${ES_HOST:-localhost}"
 export ES_PORT="${ES_PORT:-9200}"
-export ES_INDEX="${ES_INDEX:-global-pretraining}"
+export ES_INDEX="${ES_INDEX:-apertus-data}"
 
 # ── Print access info ────────────────────────────────────────────
 echo ""
