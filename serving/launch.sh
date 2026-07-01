@@ -16,11 +16,11 @@
 #   --restore           Force restore from capstor snapshot even if local
 #                       data exists (automatic when local data is absent)
 #   --snapshot-path P   Path to snapshot repo      (default: see below)
-#   --es-only           Start ES cluster only, skip web server
+#   --es-only           Start ES cluster only, skip web server (non-blocking)
 #
 # After this script returns, search via:
 #   Browser  → SSH tunnel (instructions printed below)
-#   Terminal → python3 serving/search.py "your query"
+#   Terminal → apertus-search "your query"
 # ══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -68,11 +68,87 @@ else
 fi
 
 INFO_FILE="${SCRATCH}/es-cluster-${INDEX_NAME}.info"
+LOG_FILE="${SCRATCH}/es-launch-${INDEX_NAME}.log"
 
 # ── Helper ────────────────────────────────────────────────────────────
 W=68
 hr()  { printf '%.0s─' $(seq 1 $W); echo; }
 box() { printf "│ %-$((W-3))s│\n" "$1"; }
+
+# ── Shared restore function (runs Python inline) ──────────────────────
+_run_restore() {
+    local _host="$1" _port="$2"
+    echo "Restoring from latest snapshot in ${SNAPSHOT_REPO_PATH} ..."
+    python3 -u - <<PYEOF
+import json, sys, time
+from urllib.request import urlopen, Request
+
+base  = "http://${_host}:${_port}"
+repo  = "${SNAPSHOT_REPO_NAME}"
+path  = "${SNAPSHOT_REPO_PATH}"
+index = "${INDEX_NAME}"
+
+# Register snapshot repo (idempotent)
+req = Request(base + "/_snapshot/" + repo, method="PUT",
+    data=json.dumps({"type": "fs", "settings": {"location": path, "compress": True}}).encode(),
+    headers={"Content-Type": "application/json"})
+print("Registered snapshot repo:", json.load(urlopen(req)))
+
+# Relax disk watermarks and speed up recovery
+req = Request(base + "/_cluster/settings", method="PUT",
+    data=json.dumps({"transient": {
+        "cluster.routing.allocation.disk.watermark.low":        "95%",
+        "cluster.routing.allocation.disk.watermark.high":       "97%",
+        "cluster.routing.allocation.disk.watermark.flood_stage":"99%",
+        "cluster.routing.allocation.node_initial_primaries_recoveries": 200,
+        "indices.recovery.max_bytes_per_sec": "10240mb",
+    }}).encode(),
+    headers={"Content-Type": "application/json"})
+json.load(urlopen(req))
+print("Cluster settings updated")
+
+# Delete empty index that start_es_cluster.sh may have created
+try:
+    req = Request(base + "/" + index, method="DELETE")
+    urlopen(req)
+    print("Deleted pre-existing empty index")
+except Exception:
+    pass
+
+# Find latest successful snapshot
+snaps   = json.load(urlopen(base + "/_snapshot/" + repo + "/_all"))["snapshots"]
+success = [s for s in snaps if s["state"] == "SUCCESS"]
+if not success:
+    print("ERROR: no successful snapshots found in repo", file=sys.stderr)
+    sys.exit(1)
+latest    = sorted(success, key=lambda s: s.get("start_time_in_millis", 0))[-1]
+snap_name = latest["snapshot"]
+print("Restoring snapshot: " + snap_name)
+
+# Kick off restore (async)
+req = Request(
+    base + "/_snapshot/" + repo + "/" + snap_name + "/_restore?wait_for_completion=false",
+    data=json.dumps({"indices": index, "include_global_state": False}).encode(),
+    headers={"Content-Type": "application/json"}, method="POST")
+print("Restore started:", json.load(urlopen(req)))
+
+# Poll until green/yellow
+print("Polling restore progress...")
+t0 = time.time()
+while True:
+    r = json.load(urlopen(base + "/_cat/indices/" + index + "?h=health,status,docs.count&format=json"))
+    if r:
+        h = r[0].get("health", "?")
+        s = r[0].get("status", "?")
+        d = r[0].get("docs.count", "?")
+        elapsed = int(time.time() - t0)
+        print("  [" + str(elapsed) + "s] health=" + h + " status=" + s + " docs=" + str(d))
+        if h in ("green", "yellow"):
+            break
+    time.sleep(30)
+print("Restore complete.")
+PYEOF
+}
 
 # ══════════════════════════════════════════════════════════════════════
 # Step 1 — check if a cluster is already running
@@ -135,6 +211,63 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
         "${REPO_DIR}/indexing/scripts/start_es_cluster.sh" \
         | awk '{print $NF}')
     echo "  SLURM job ID: ${CLUSTER_JOB_ID}"
+
+    # ── --es-only: non-blocking — background the health check + restore ──
+    if [[ "$DO_WEB" == false ]]; then
+        echo ""
+        echo "  Progress tracking:"
+        echo ""
+        echo "    tail -f ${LOG_FILE}"
+        echo ""
+
+        # Snapshot vars for subshell
+        _bg_info="$INFO_FILE"
+        _bg_job="$CLUSTER_JOB_ID"
+        _bg_scratch="$SCRATCH"
+        _bg_index="$INDEX_NAME"
+        _bg_repo_name="$SNAPSHOT_REPO_NAME"
+        _bg_repo_path="$SNAPSHOT_REPO_PATH"
+        _bg_do_restore="$DO_RESTORE"
+
+        (
+            echo "[$(date '+%T')] Waiting for cluster to become healthy..."
+            WAIT=0
+            while [[ ! -f "$_bg_info" ]]; do
+                sleep 5; WAIT=$((WAIT+5))
+                STATE=$(squeue -j "$_bg_job" -h -o '%T' 2>/dev/null || true)
+                if [[ -z "$STATE" ]]; then
+                    echo "ERROR: SLURM job $_bg_job is no longer in the queue."
+                    echo "Check: squeue -u $USER"
+                    exit 1
+                fi
+                echo "  [${WAIT}s] waiting for info file..."
+            done
+
+            ES_HOST=$(grep ^ES_HOST "$_bg_info" | cut -d= -f2)
+            ES_PORT=$(grep ^ES_PORT "$_bg_info" | cut -d= -f2)
+
+            for i in $(seq 1 60); do
+                if curl -sf "http://${ES_HOST}:${ES_PORT}/_cluster/health" >/dev/null 2>&1; then
+                    echo "✓ Cluster healthy at ${ES_HOST}:${ES_PORT}"
+                    break
+                fi
+                sleep 5
+                (( i == 60 )) && { echo "ERROR: cluster never responded"; exit 1; }
+            done
+
+            if [[ "$_bg_do_restore" == true ]]; then
+                _run_restore "$ES_HOST" "$ES_PORT"
+            fi
+
+            echo ""
+            echo "[$(date '+%T')] Done. Cluster ready at ${ES_HOST}:${ES_PORT}"
+            echo "  apertus-search \"your query\""
+        ) >> "$LOG_FILE" 2>&1 &
+        disown
+        exit 0
+    fi
+
+    # ── Blocking mode (web server follows) ────────────────────────────
     echo ""
     echo "Waiting for cluster to become healthy ..."
     echo "(This usually takes 2-4 minutes. Ctrl-C to abort.)"
@@ -144,7 +277,6 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
     until [[ -f "$INFO_FILE" ]]; do
         printf "\r  [%3ds] waiting for info file..." "$WAIT_SECS"
         sleep 5; WAIT_SECS=$((WAIT_SECS+5))
-        # Check the job hasn't failed
         STATE=$(squeue -j "$CLUSTER_JOB_ID" -h -o '%T' 2>/dev/null || echo "UNKNOWN")
         if [[ -z "$STATE" ]]; then
             echo ""
@@ -159,7 +291,6 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
     ES_HOST=$(grep ^ES_HOST "$INFO_FILE" | cut -d= -f2)
     ES_PORT=$(grep ^ES_PORT "$INFO_FILE" | cut -d= -f2)
 
-    # Wait for cluster to actually respond
     for i in $(seq 1 60); do
         if curl -sf "http://${ES_HOST}:${ES_PORT}/_cluster/health" >/dev/null 2>&1; then
             echo "✓ Cluster healthy at ${ES_HOST}:${ES_PORT}"
@@ -169,79 +300,9 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
         (( i == 60 )) && { echo "ERROR: cluster never responded"; exit 1; }
     done
 
-    # ── Restore from snapshot if requested ──────────────────────────
     if [[ "$DO_RESTORE" == true ]]; then
         echo ""
-        echo "Restoring from latest snapshot in ${SNAPSHOT_REPO_PATH} ..."
-
-        VENV="${SCRATCH}/indexer-venv/bin/python3"
-        "$VENV" - <<PYEOF
-import json, sys, time
-from urllib.request import urlopen, Request
-
-base = "http://${ES_HOST}:${ES_PORT}"
-repo = "${SNAPSHOT_REPO_NAME}"
-repo_path = "${SNAPSHOT_REPO_PATH}"
-index = "${INDEX_NAME}"
-
-# Register repo (idempotent)
-req = Request(f"{base}/_snapshot/{repo}", method="PUT",
-    data=json.dumps({"type":"fs","settings":{"location":repo_path,"compress":True}}).encode(),
-    headers={"Content-Type":"application/json"})
-print("Registered snapshot repo:", json.load(urlopen(req)))
-
-# Relax disk watermarks so restore works even when filesystem is >85% full
-req = Request(f"{base}/_cluster/settings", method="PUT",
-    data=json.dumps({"transient": {
-        "cluster.routing.allocation.disk.watermark.low": "95%",
-        "cluster.routing.allocation.disk.watermark.high": "97%",
-        "cluster.routing.allocation.disk.watermark.flood_stage": "99%",
-        "cluster.routing.allocation.node_initial_primaries_recoveries": 200,
-        "indices.recovery.max_bytes_per_sec": "10gb",
-        "indices.recovery.max_concurrent_snapshot_file_downloads_per_node": 200,
-        "indices.recovery.max_concurrent_snapshot_file_downloads": 20,
-        "indices.recovery.max_concurrent_file_chunks": 5,
-    }}).encode(),
-    headers={"Content-Type":"application/json"})
-json.load(urlopen(req))
-print("Cluster settings updated (disk watermarks, recovery throttling removed)")
-
-# Delete the index if it already exists (start_es_cluster.sh creates an empty one)
-try:
-    req = Request(f"{base}/{index}", method="DELETE")
-    urlopen(req)
-    print("Deleted pre-existing empty index")
-except Exception:
-    pass  # didn't exist, fine
-
-# Find latest successful snapshot
-snaps = json.load(urlopen(f"{base}/_snapshot/{repo}/_all"))["snapshots"]
-success = [s for s in snaps if s["state"] == "SUCCESS"]
-if not success:
-    print("ERROR: no successful snapshots found in repo", file=sys.stderr); sys.exit(1)
-latest = sorted(success, key=lambda s: s.get("start_time_in_millis",0))[-1]
-snap_name = latest["snapshot"]
-print("Restoring snapshot: " + snap_name)
-
-# Start restore
-req = Request(
-    f"{base}/_snapshot/{repo}/{snap_name}/_restore?wait_for_completion=false",
-    data=json.dumps({"indices": index, "include_global_state": False}).encode(),
-    headers={"Content-Type":"application/json"}, method="POST")
-print("Restore started:", json.load(urlopen(req)))
-
-# Poll
-print("Polling restore progress...")
-t0 = time.time()
-while True:
-    r = json.load(urlopen(f"{base}/_cat/indices/{index}?h=health,status,docs.count&format=json"))
-    if r:
-        print(f"  [{int(time.time()-t0)}s] {r[0]}")
-        if r[0].get("health") in ("green","yellow"):
-            break
-    time.sleep(30)
-print("Restore complete.")
-PYEOF
+        _run_restore "$ES_HOST" "$ES_PORT"
     fi
 fi
 
@@ -270,8 +331,8 @@ if [[ "$DO_WEB" == true ]]; then
     echo ""
     echo "  CLI SEARCH (on this machine):"
     echo ""
-    echo "    ES_HOST=${ES_HOST} python3 ${REPO_DIR}/serving/search.py \"your query\""
-    echo "    ES_HOST=${ES_HOST} python3 ${REPO_DIR}/serving/search.py --help"
+    echo "    apertus-search \"your query\""
+    echo "    apertus-search --help"
     hr
     echo ""
 
@@ -281,15 +342,4 @@ if [[ "$DO_WEB" == true ]]; then
         ES_INDEX="$INDEX_NAME" \
         PORT="$PORT" \
         "${SCRIPT_DIR}/website/run.sh"
-else
-    THIS_HOST="$(hostname -f 2>/dev/null || hostname)"
-    hr
-    echo "  ES cluster is ready. To start the web server:"
-    echo ""
-    echo "    ES_HOST=${ES_HOST} PORT=${PORT} ./serving/launch.sh"
-    echo ""
-    echo "  Or for CLI search:"
-    echo ""
-    echo "    ES_HOST=${ES_HOST} python3 ${REPO_DIR}/serving/search.py \"your query\""
-    hr
 fi
