@@ -30,7 +30,7 @@ This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn
 
 ### 2. Search from the command line
 
-Install once — no PATH editing needed:
+Install once:
 
 ```bash
 uv tool install --editable /path/to/data-indexing/serving/
