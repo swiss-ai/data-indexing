@@ -75,6 +75,18 @@ W=68
 hr()  { printf '%.0s─' $(seq 1 $W); echo; }
 box() { printf "│ %-$((W-3))s│\n" "$1"; }
 
+_slurm_error() {
+    local job_id="$1"
+    local log
+    log=$(find "$SCRATCH" -maxdepth 1 -name "slurm-${job_id}*" 2>/dev/null | head -1)
+    if [[ -n "$log" ]]; then
+        echo "  Last lines of ${log}:"
+        tail -20 "$log" | sed 's/^/    /'
+    else
+        echo "  (no SLURM log found — try: scontrol show job ${job_id})"
+    fi
+}
+
 # ── Shared restore function (runs Python inline) ──────────────────────
 _run_restore() {
     local _host="$1" _port="$2"
@@ -250,8 +262,8 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
             STATE=$(squeue -j "$job_id" -h -o '%T' 2>/dev/null || true)
             if [[ -z "$STATE" ]]; then
                 printf "\n"
-                echo "ERROR: SLURM job $job_id is no longer in the queue."
-                echo "Check: squeue -u $USER"
+                echo "ERROR: SLURM job $job_id exited unexpectedly."
+                _slurm_error "$job_id"
                 return 1
             fi
 
@@ -295,8 +307,8 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
                 sleep 5; WAIT=$((WAIT+5))
                 STATE=$(squeue -j "$_bg_job" -h -o '%T' 2>/dev/null || true)
                 if [[ -z "$STATE" ]]; then
-                    echo "ERROR: SLURM job $_bg_job is no longer in the queue."
-                    echo "Check: squeue -u $USER"
+                    echo "ERROR: SLURM job $_bg_job exited unexpectedly."
+                    _slurm_error "$_bg_job"
                     exit 1
                 fi
                 if [[ "$STATE" != "$last_state" ]]; then
