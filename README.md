@@ -1,4 +1,4 @@
-# Apertus Pretraining Data Search
+# Apertus Data Search
 
 Full-text search over 4.85 billion documents from the Apertus pretraining and posttraining corpus. Search by keyword, filter by dataset or language, and trace any document back to its source file.
 
