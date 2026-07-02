@@ -16,7 +16,7 @@ cd /path/to/data-indexing
 ./serving/launch.sh --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn't on scratch, it automatically restores from the capstor snapshot (~5 min) — no flags needed.
+This starts a 5-node Elasticsearch cluster on SLURM. If the index isn't on scratch, it automatically restores from the capstor snapshot.
 
 **Options:**
 
@@ -88,7 +88,7 @@ The web UI provides a browser-based search interface. Start it instead of (or al
 ./serving/launch.sh        # starts ES cluster + web server on port 8888
 ```
 
-Since the server runs on a CSCS login node, access it from your laptop via an SSH tunnel. **Important:** CSCS login nodes are a pool — you must tunnel into the exact same node where you ran `launch.sh` (e.g. `clariden-ln004`), not the generic `clariden` alias which may route you to a different machine. The launch script prints the correct hostname to use. Open the tunnel in a separate terminal on your laptop and keep it running; Ctrl-C closes it. Then open `http://localhost:8888` in your browser.
+Since the server runs on a CSCS login node, access it from your laptop via an SSH tunnel. **Important:** CSCS login nodes are a pool: you must tunnel into the exact same node where you ran `launch.sh` (e.g. `clariden-ln004`). Open the tunnel in a separate terminal on your laptop and keep it running; Ctrl-C closes it. Then open `http://localhost:8888` in your browser.
 
 ---
 
