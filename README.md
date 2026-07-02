@@ -30,7 +30,13 @@ This starts a 5-node Elasticsearch cluster on SLURM (~2-4 min). If the index isn
 
 ### 2. Search from the command line
 
-Install once:
+Install `uv` if you don't have it yet (one-liner, no sudo needed):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then install the search tool once (points at your local checkout):
 
 ```bash
 uv tool install --editable /path/to/data-indexing/serving/
@@ -82,17 +88,7 @@ The web UI provides a browser-based search interface. Start it instead of (or al
 ./serving/launch.sh        # starts ES cluster + web server on port 8888
 ```
 
-Since the server runs on a CSCS login node, access it from your laptop via an SSH tunnel:
-
-```bash
-# On your laptop — replace placeholders with what launch.sh prints:
-ssh -N -L 8888:localhost:8888 <your-cscs-username>@<login-node>
-
-# ProxyJump if behind a bastion:
-ssh -N -L 8888:localhost:8888 -J <bastion> <user>@<login-node>
-```
-
-Then open `http://localhost:8888`. Keep the tunnel terminal open; Ctrl-C to close it.
+Since the server runs on a CSCS login node, access it from your laptop via an SSH tunnel. **Important:** CSCS login nodes are a pool — you must tunnel into the exact same node where you ran `launch.sh` (e.g. `clariden-ln004`), not the generic `clariden` alias which may route you to a different machine. The launch script prints the correct hostname to use. Open the tunnel in a separate terminal on your laptop and keep it running; Ctrl-C closes it. Then open `http://localhost:8888` in your browser.
 
 ---
 

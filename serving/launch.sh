@@ -239,6 +239,41 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
         | awk '{print $NF}')
     echo "  SLURM job ID: ${CLUSTER_JOB_ID}"
 
+    # ── shared wait-for-cluster logic (used by both modes) ────────────
+    # Prints PENDING/RUNNING status, then counts time until info file appears.
+    _wait_for_cluster() {
+        local job_id="$1" info="$2"
+        local YELLOW='\033[1;33m' GREEN='\033[0;32m' RESET='\033[0m'
+        local last_state="" wait_secs=0
+
+        while [[ ! -f "$info" ]]; do
+            STATE=$(squeue -j "$job_id" -h -o '%T' 2>/dev/null || true)
+            if [[ -z "$STATE" ]]; then
+                printf "\n"
+                echo "ERROR: SLURM job $job_id is no longer in the queue."
+                echo "Check: squeue -u $USER"
+                return 1
+            fi
+
+            if [[ "$STATE" == "PENDING" ]]; then
+                if [[ "$last_state" != "PENDING" ]]; then
+                    printf "\r${YELLOW}  ◌ PENDING${RESET}  job ${job_id} waiting for nodes...                    "
+                    last_state="PENDING"
+                fi
+            elif [[ "$STATE" == "RUNNING" ]]; then
+                if [[ "$last_state" != "RUNNING" ]]; then
+                    printf "\n${GREEN}  ● RUNNING${RESET}  job ${job_id}\n"
+                    last_state="RUNNING"
+                    wait_secs=0
+                fi
+                printf "\r  ${GREEN}[%3ds]${RESET} starting up, waiting for cluster..." "$wait_secs"
+                wait_secs=$((wait_secs+5))
+            fi
+            sleep 5
+        done
+        printf "\n"
+    }
+
     # ── --es-only: non-blocking — background the health check + restore ──
     if [[ "$DO_WEB" == false ]]; then
         echo ""
@@ -247,18 +282,15 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
         echo "    tail -f ${LOG_FILE}"
         echo ""
 
-        # Snapshot vars for subshell
         _bg_info="$INFO_FILE"
         _bg_job="$CLUSTER_JOB_ID"
-        _bg_scratch="$SCRATCH"
         _bg_index="$INDEX_NAME"
-        _bg_repo_name="$SNAPSHOT_REPO_NAME"
-        _bg_repo_path="$SNAPSHOT_REPO_PATH"
         _bg_do_restore="$DO_RESTORE"
 
         (
-            echo "[$(date '+%T')] Waiting for cluster to become healthy..."
+            echo "[$(date '+%T')] Job ${_bg_job} submitted — waiting for SLURM..."
             WAIT=0
+            last_state=""
             while [[ ! -f "$_bg_info" ]]; do
                 sleep 5; WAIT=$((WAIT+5))
                 STATE=$(squeue -j "$_bg_job" -h -o '%T' 2>/dev/null || true)
@@ -267,15 +299,20 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
                     echo "Check: squeue -u $USER"
                     exit 1
                 fi
-                echo "  [${WAIT}s] waiting for info file..."
+                if [[ "$STATE" != "$last_state" ]]; then
+                    echo "[$(date '+%T')] Job state: ${STATE}"
+                    last_state="$STATE"
+                fi
+                [[ "$STATE" == "RUNNING" ]] && echo "  [${WAIT}s] cluster starting..."
             done
 
             ES_HOST=$(grep ^ES_HOST "$_bg_info" | cut -d= -f2)
             ES_PORT=$(grep ^ES_PORT "$_bg_info" | cut -d= -f2)
+            echo "[$(date '+%T')] Info file written — waiting for HTTP..."
 
             for i in $(seq 1 60); do
                 if curl -sf "http://${ES_HOST}:${ES_PORT}/_cluster/health" >/dev/null 2>&1; then
-                    echo "✓ Cluster healthy at ${ES_HOST}:${ES_PORT}"
+                    echo "[$(date '+%T')] ✓ Cluster healthy at ${ES_HOST}:${ES_PORT}"
                     break
                 fi
                 sleep 5
@@ -287,8 +324,7 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
             fi
 
             echo ""
-            echo "[$(date '+%T')] Done. Cluster ready at ${ES_HOST}:${ES_PORT}"
-            echo "  apertus-search \"your query\""
+            echo "[$(date '+%T')] ✓ Ready — apertus-search \"your query\""
         ) >> "$LOG_FILE" 2>&1 &
         disown
         exit 0
@@ -296,39 +332,23 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
 
     # ── Blocking mode (web server follows) ────────────────────────────
     echo ""
-    echo "Waiting for cluster to become healthy ..."
-    echo "(This usually takes 2-4 minutes. Ctrl-C to abort.)"
-    echo ""
-
-    WAIT_SECS=0
-    until [[ -f "$INFO_FILE" ]]; do
-        printf "\r  [%3ds] waiting for info file..." "$WAIT_SECS"
-        sleep 5; WAIT_SECS=$((WAIT_SECS+5))
-        STATE=$(squeue -j "$CLUSTER_JOB_ID" -h -o '%T' 2>/dev/null || echo "UNKNOWN")
-        if [[ -z "$STATE" ]]; then
-            echo ""
-            echo "ERROR: SLURM job $CLUSTER_JOB_ID is no longer in the queue."
-            echo "Check: squeue -u $USER"
-            echo "Log:   $(ls ${SCRATCH}/slurm-${CLUSTER_JOB_ID}* 2>/dev/null | head -1)"
-            exit 1
-        fi
-    done
-    echo ""
+    _wait_for_cluster "$CLUSTER_JOB_ID" "$INFO_FILE" || exit 1
 
     ES_HOST=$(grep ^ES_HOST "$INFO_FILE" | cut -d= -f2)
     ES_PORT=$(grep ^ES_PORT "$INFO_FILE" | cut -d= -f2)
 
     for i in $(seq 1 60); do
         if curl -sf "http://${ES_HOST}:${ES_PORT}/_cluster/health" >/dev/null 2>&1; then
-            echo "✓ Cluster healthy at ${ES_HOST}:${ES_PORT}"
             break
         fi
         sleep 5
         (( i == 60 )) && { echo "ERROR: cluster never responded"; exit 1; }
     done
 
+    GREEN='\033[0;32m'; RESET='\033[0m'
+    printf "${GREEN}  ✓ Cluster online${RESET}  ${ES_HOST}:${ES_PORT}\n\n"
+
     if [[ "$DO_RESTORE" == true ]]; then
-        echo ""
         _run_restore "$ES_HOST" "$ES_PORT"
     fi
 fi
