@@ -84,7 +84,7 @@ To uninstall: `uv tool uninstall apertus-search`
 Since the server runs on a CSCS login node, access it from your laptop via an SSH tunnel. **Important:** CSCS login nodes are a pool: you must tunnel into the exact same node where you run `launch.sh` (e.g. `clariden-ln004`). If you normally connect with `ssh clariden`, you can now use:
 
 ```bash
-ssh -L 8888:localhost:8888 claride
+ssh -L 8888:localhost:8888 clariden
 ```
 
 Then you can launch the ES cluster, and web interface, through:
