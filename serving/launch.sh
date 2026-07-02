@@ -223,6 +223,13 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
         ES_DATA_DIR="${SCRATCH}/es-data-${INDEX_NAME}-restore"
     fi
 
+    # For restore, always wipe the data dir so stale cluster state
+    # (voting configs, node IDs) from a previous run can't block election.
+    if [[ "$DO_RESTORE" == true && -d "$ES_DATA_DIR" ]]; then
+        echo "  Removing stale restore data dir: ${ES_DATA_DIR}"
+        rm -rf "$ES_DATA_DIR"
+    fi
+
     echo ""
     echo "Submitting ES cluster SLURM job ($NODES nodes) ..."
     CLUSTER_JOB_ID=$(sbatch \
