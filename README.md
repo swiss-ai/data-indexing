@@ -149,8 +149,6 @@ curl -s "http://$ES_HOST:9200/_search/scroll" \
   -d "{\"scroll\": \"2m\", \"scroll_id\": \"$SCROLL_ID\"}" > page2.json
 ```
 
-The [Elasticsearch 7.17 query DSL docs](https://www.elastic.co/guide/en/elasticsearch/reference/7.17/query-dsl.html) cover the full range of query types (fuzzy, phrase, range, geo, more-like-this, etc.).
-
 ---
 
 ## Smoke tests
