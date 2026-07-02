@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools>=42"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "apertus-search"
 version = "0.1.0"
 description = "CLI search client for the Apertus pretraining data index"
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 
 [project.scripts]
 apertus-search = "apertus_search:main"

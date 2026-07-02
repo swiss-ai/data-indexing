@@ -120,17 +120,30 @@ for (( i=0; i<max_wait; i++ )); do
     sleep 10
 done
 
-# ---- Ensure Python venv ----
+# ---- Write info file so launch.sh / workers can discover the cluster ----
+# Written here (before index creation) so the cluster stays usable even if
+# the venv is absent — e.g. when launch.sh will restore the index from snapshot.
+cat > "$INFO_FILE" <<EOF
+ES_HOST=${MASTER_NODE}
+ES_PORT=${ES_PORT}
+ES_DATA_DIR=${ES_DATA_DIR}
+INDEX_NAME=${INDEX_NAME}
+NUM_NODES=${NUM_NODES}
+CLUSTER_JOB_ID=${SLURM_JOB_ID}
+STARTED_AT=$(date -Iseconds)
+EOF
+echo "[INFO] Info file written: $INFO_FILE"
+
+# ---- Create index if it doesn't exist (requires indexer-venv) ----
 VENV_DIR="${SCRATCH}/indexer-venv"
 PYTHON_BIN="${VENV_DIR}/bin/python3"
 if [[ ! -x "$PYTHON_BIN" ]]; then
-    echo "[ERROR] Indexer venv not found at $VENV_DIR — run:"
-    echo "  python3 -m venv $VENV_DIR"
+    echo "[INFO] Indexer venv not found at $VENV_DIR — skipping index creation."
+    echo "[INFO] If you need to create the index (not restoring from snapshot), run:"
+    echo "  python3.11 -m venv $VENV_DIR"
     echo "  $VENV_DIR/bin/pip install -r $REPO_DIR/indexing/environment/requirements.txt"
-    exit 1
-fi
+else
 
-# ---- Create index if it doesn't exist ----
 "$PYTHON_BIN" - <<PYEOF
 from elasticsearch import Elasticsearch
 import sys
@@ -177,17 +190,8 @@ else:
     print(f"[INFO] Index '{index}' created ({${NUM_SHARDS}} shards, 0 replicas)")
 PYEOF
 
-# ---- Write info file so worker jobs can discover the cluster ----
-cat > "$INFO_FILE" <<EOF
-ES_HOST=${MASTER_NODE}
-ES_PORT=${ES_PORT}
-ES_DATA_DIR=${ES_DATA_DIR}
-INDEX_NAME=${INDEX_NAME}
-NUM_NODES=${NUM_NODES}
-CLUSTER_JOB_ID=${SLURM_JOB_ID}
-STARTED_AT=$(date -Iseconds)
-EOF
-echo "[INFO] Info file written: $INFO_FILE"
+fi  # end venv check
+
 echo "[INFO] Cluster is live — worker jobs can now index data."
 
 # ---- Background monitoring loop (every 2 min) ----

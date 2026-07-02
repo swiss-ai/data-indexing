@@ -39,8 +39,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 Then install the search tool once (points at your local checkout):
 
 ```bash
-uv tool install --editable /path/to/data-indexing/serving/
+uv tool install --python 3.11 --editable /path/to/data-indexing/serving/
 ```
+
+The `--python 3.11` flag is required on systems where the default Python is older (e.g. 3.6 on some CSCS nodes).
 
 The running cluster is auto-detected. Basic usage:
 
