@@ -8,6 +8,7 @@
 #   ./serving/launch.sh [options]
 #
 # Options:
+#   --account ACC       SLURM account to bill the job to           (required)
 #   --index NAME        ES index name              (default: apertus-data)
 #   --nodes N           SLURM nodes for cluster    (default: 5)
 #   --port PORT         Web server port            (default: 8888)
@@ -37,12 +38,14 @@ SNAPSHOT_REPO_PATH="${SNAPSHOT_REPO_PATH:-/capstor/store/cscs/swissai/a145/es_in
 SNAPSHOT_REPO_NAME="capstor-a145"
 DO_WEB=true
 DO_RESTORE=false
+ACCOUNT=""
 # ES_DATA_DIR default is set after arg parsing (depends on DO_RESTORE)
 _ES_DATA_DIR_OVERRIDE=""
 
 # ── Argument parsing ──────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --account)       ACCOUNT="$2";                shift 2 ;;
         --index)         INDEX_NAME="$2";            shift 2 ;;
         --nodes)         NODES="$2";                 shift 2 ;;
         --port)          PORT="$2";                  shift 2 ;;
@@ -56,6 +59,11 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+if [[ -z "$ACCOUNT" ]]; then
+    echo "ERROR: --account is required (SLURM account to bill the job to)." >&2
+    exit 1
+fi
 
 # Use explicit --data-dir if given; otherwise, restore gets a fresh dir so it
 # doesn't inherit stale voting config from a previous cluster's data directory.
@@ -245,6 +253,7 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
     echo ""
     echo "Submitting ES cluster SLURM job ($NODES nodes) ..."
     CLUSTER_JOB_ID=$(sbatch \
+        --account="$ACCOUNT" \
         --nodes="$NODES" \
         --export="ALL,INDEX_NAME=${INDEX_NAME},ES_DATA_DIR=${ES_DATA_DIR},REPO_DIR=${REPO_DIR}" \
         "${REPO_DIR}/indexing/scripts/start_es_cluster.sh" \

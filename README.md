@@ -13,15 +13,16 @@ Full-text search over 4.85 billion documents from the Apertus pretraining and po
 
 ```bash
 cd /path/to/data-indexing
-./serving/launch.sh --es-only
+./serving/launch.sh --account <your-slurm-account> --es-only
 ```
 
-This starts a 5-node Elasticsearch cluster on SLURM. If the index isn't on scratch, it automatically restores from the capstor snapshot.
+This starts a 5-node Elasticsearch cluster on SLURM, billed to `--account`. If the index isn't on scratch, it automatically restores from the capstor snapshot.
 
 **Options:**
 
 | Flag | Description | Default |
 |---|---|---|
+| `--account ACC` | SLURM account to bill the job to | *(required)* |
 | `--nodes N` | SLURM nodes for ES cluster | `5` |
 | `--restore` | Force restore from snapshot (automatic when local data is absent) | — |
 | `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
@@ -92,7 +93,7 @@ ssh -L 8888:localhost:8888 clariden
 Then you can launch the ES cluster, and web interface, through:
 
 ```bash
-./serving/launch.sh        # starts ES cluster + web server on port 8888
+./serving/launch.sh --account <your-slurm-account>        # starts ES cluster + web server on port 8888
 ```
 
 Then open `http://localhost:8888` in your browser.
