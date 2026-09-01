@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=normal
-#SBATCH --account=a145
+#SBATCH --account=infra01
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -29,7 +29,7 @@ SCRIPT="${REPO_DIR}/scripts/posttrain/preprocess_alignment.py"
 
 DIR_8B="${CAPSTOR}/posttrain_data/alignment_datasets_v1/final_dataset_8B"
 DIR_70B="${CAPSTOR}/posttrain_data/alignment_datasets_v1/final_dataset_70B"
-OUTPUT_DIR="/capstor/store/cscs/swissai/a145/es_indices_2026/posttrain_preprocessing/alignment-v2"
+OUTPUT_DIR="/capstor/store/cscs/swissai/infra01/es_indices/posttrain_preprocessing/alignment-v2"
 
 echo "[Preprocess] ======================================"
 echo "[Preprocess] Date:   $(date)"

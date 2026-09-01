@@ -59,7 +59,7 @@ exec /usr/share/elasticsearch/bin/elasticsearch \
     -E "node.name=${ES_NODE_NAME}" \
     -E "path.data=${DATA_PATH}" \
     -E "path.logs=${LOGS_PATH}" \
-    -E "path.repo=/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index" \
+    -E "path.repo=/capstor/store/cscs/swissai/infra01/es_indices/apertus-index" \
     -E "http.port=${PORT}" \
     -E "xpack.security.enabled=false" \
     -E "node.store.allow_mmap=false" \

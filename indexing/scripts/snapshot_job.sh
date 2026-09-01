@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=normal
-#SBATCH --account=a145
+#SBATCH --account=infra01
 #SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -9,7 +9,7 @@
 #SBATCH --job-name=es-snapshot
 
 # ============================================================
-# Take a filesystem snapshot of an ES index to capstor a145.
+# Take a filesystem snapshot of an ES index to capstor infra01.
 #
 # Depends on the ES cluster being up (path.repo must be set in
 # start_es_node.sh — it is).  Submit with:
@@ -23,7 +23,7 @@
 # Optional env vars:
 #   SNAPSHOT_NAME  - name for the snapshot (default: snapshot-<date>)
 #   REPO_PATH      - filesystem path for the snapshot repo
-#                    (default: /capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index)
+#                    (default: /capstor/store/cscs/swissai/infra01/es_indices/apertus-index)
 #   INFO_WAIT_SECS - seconds to wait for cluster info file (default: 3600)
 # ============================================================
 
@@ -31,8 +31,8 @@ set -euo pipefail
 
 INDEX_NAME="${INDEX_NAME:?INDEX_NAME must be set}"
 SNAPSHOT_NAME="${SNAPSHOT_NAME:-snapshot-$(date +%Y%m%d-%H%M%S)}"
-REPO_PATH="${REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index}"
-REPO_NAME="capstor-a145"
+REPO_PATH="${REPO_PATH:-/capstor/store/cscs/swissai/infra01/es_indices/apertus-index}"
+REPO_NAME="capstor-infra01"
 INFO_WAIT_SECS="${INFO_WAIT_SECS:-3600}"
 
 SCRATCH="/iopsstor/scratch/cscs/${USER}"

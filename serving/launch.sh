@@ -11,6 +11,7 @@
 #   --account ACC       SLURM account to bill the job to           (required)
 #   --index NAME        ES index name              (default: apertus-data)
 #   --nodes N           SLURM nodes for cluster    (default: 5)
+#   --time HH:MM:SS     SLURM wall time for cluster (default: 12:00:00)
 #   --port PORT         Web server port            (default: 8888)
 #   --data-dir DIR      ES data directory          (default: $SCRATCH/es-data-<INDEX>)
 #   --no-web            Skip starting the web server
@@ -32,10 +33,11 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ── Defaults ──────────────────────────────────────────────────────────
 INDEX_NAME="${INDEX_NAME:-apertus-data}"
 NODES="${NODES:-5}"
+TIME=""
 PORT="${PORT:-8888}"
 SCRATCH="${SCRATCH:-/iopsstor/scratch/cscs/${USER}}"
-SNAPSHOT_REPO_PATH="${SNAPSHOT_REPO_PATH:-/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index}"
-SNAPSHOT_REPO_NAME="capstor-a145"
+SNAPSHOT_REPO_PATH="${SNAPSHOT_REPO_PATH:-/capstor/store/cscs/swissai/infra01/es_indices/apertus-index}"
+SNAPSHOT_REPO_NAME="capstor-infra01"
 DO_WEB=true
 DO_RESTORE=false
 ACCOUNT=""
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --account)       ACCOUNT="$2";                shift 2 ;;
         --index)         INDEX_NAME="$2";            shift 2 ;;
         --nodes)         NODES="$2";                 shift 2 ;;
+        --time)          TIME="$2";                  shift 2 ;;
         --port)          PORT="$2";                  shift 2 ;;
         --data-dir)      _ES_DATA_DIR_OVERRIDE="$2"; shift 2 ;;
         --snapshot-path) SNAPSHOT_REPO_PATH="$2";    shift 2 ;;
@@ -255,6 +258,7 @@ if [[ "$CLUSTER_RUNNING" == false ]]; then
     CLUSTER_JOB_ID=$(sbatch \
         --account="$ACCOUNT" \
         --nodes="$NODES" \
+        ${TIME:+--time="$TIME"} \
         --export="ALL,INDEX_NAME=${INDEX_NAME},ES_DATA_DIR=${ES_DATA_DIR},REPO_DIR=${REPO_DIR}" \
         "${REPO_DIR}/indexing/scripts/start_es_cluster.sh" \
         | awk '{print $NF}')

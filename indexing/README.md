@@ -42,8 +42,8 @@ All paths are configurable. The most important ones for `submit_index_jobs.sh`:
 | `FW2_AGG_DIR` | FineWeb-2 aggregated parquet dir | *(skip if unset)* |
 | `CAPSTOR_BASE` | Base path for first-pass raw datasets | `/capstor/store/cscs/swissai/infra01/datasets/swiss-ai` |
 | `INFRA01_BASE` | Base path for second-pass datasets (Wikipedia, math, code) | `/capstor/store/cscs/swissai/infra01` |
-| `POSTTRAIN_PRE_BASE` | Base path for post-training datasets (alignment, SFT) | `/capstor/store/cscs/swissai/a145/es_indices_2026/posttrain_preprocessing` |
-| `SNAPSHOT_REPO_PATH` | Filesystem path for ES snapshots | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
+| `POSTTRAIN_PRE_BASE` | Base path for post-training datasets (alignment, SFT) | `/capstor/store/cscs/swissai/infra01/es_indices/posttrain_preprocessing` |
+| `SNAPSHOT_REPO_PATH` | Filesystem path for ES snapshots | `/capstor/store/cscs/swissai/infra01/es_indices/apertus-index` |
 | `SCRATCH` | Scratch filesystem root | `/iopsstor/scratch/cscs/$USER` |
 | `ES_ENV` | Container environment name | `es-python` |
 

@@ -90,7 +90,7 @@ STARCODER_EXTRAS_DIR="${INFRA01_BASE}/datasets/swiss-ai/starcoderdata-extras"
 STACKV2_EDU_DIR="${INFRA01_BASE}/datasets/common-pile/stackv2_edu_filtered/snapshot"
 
 # Posttrain dataset paths (preprocessed output from preprocess_*.py scripts)
-POSTTRAIN_PRE_BASE="${POSTTRAIN_PRE_BASE:-/capstor/store/cscs/swissai/a145/es_indices_2026/posttrain_preprocessing}"
+POSTTRAIN_PRE_BASE="${POSTTRAIN_PRE_BASE:-/capstor/store/cscs/swissai/infra01/es_indices/posttrain_preprocessing}"
 ALIGNMENT_DIR="${POSTTRAIN_PRE_BASE}/alignment"    # preprocess_alignment.py output
 SFT_DIR="${POSTTRAIN_PRE_BASE}/sft-mixture"        # preprocess_sft.py output
 

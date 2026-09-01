@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=normal
-#SBATCH --account=a145
+#SBATCH --account=infra01
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -28,7 +28,7 @@ SCRIPT="${REPO_DIR}/scripts/posttrain/preprocess_sft.py"
 
 export HF_DATASET="swiss-ai/apertus-sft-mixture"
 export DOWNLOAD_DIR="${SCRATCH}/sft-mixture-raw"
-OUTPUT_DIR="/capstor/store/cscs/swissai/a145/es_indices_2026/posttrain_preprocessing/sft-mixture-v2"
+OUTPUT_DIR="/capstor/store/cscs/swissai/infra01/es_indices/posttrain_preprocessing/sft-mixture-v2"
 
 echo "[Preprocess] ======================================"
 echo "[Preprocess] Date:       $(date)"

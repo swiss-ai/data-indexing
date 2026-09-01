@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=normal
-#SBATCH --account=a145
+#SBATCH --account=infra01
 #SBATCH --time=11:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -19,7 +19,7 @@ set -euo pipefail
 SCRATCH="/iopsstor/scratch/cscs/${USER}"
 VENV="${SCRATCH}/indexer-venv/bin/python3"
 INFO_FILE="${SCRATCH}/es-cluster-${INDEX_NAME}.info"
-REPO_NAME="capstor-a145"
+REPO_NAME="capstor-infra01"
 SNAPSHOT_NAME="snapshot-$(date +%Y%m%d-%H%M%S)"
 
 # ── Wait for cluster ──────────────────────────────────────────────────────────

@@ -9,6 +9,38 @@ Full-text search over 4.85 billion documents from the Apertus pretraining and po
 
 ## Quickstart
 
+### 0. Set up the container environment (one-time)
+
+`launch.sh` runs the ES cluster inside a pyxis/enroot container. The container is referenced by name (`es-python`, see `ES_ENV` in [indexing/README.md](indexing/README.md)) via an EDF file at `~/.edf/es-python.toml`, which points at a built `.sqsh` image. This is per-user setup — it isn't part of the repo checkout.
+
+Create `~/.edf/es-python.toml` (adjust paths/username):
+
+```toml
+image = "/capstor/scratch/cscs/$USER/containers/es-python.sqsh"
+workdir = "/capstor/scratch/cscs/$USER"
+writable = true
+mounts = [
+"/users/$USER:/users/$USER",
+"/iopsstor/scratch/cscs/$USER:/iopsstor/scratch/cscs/$USER",
+"/capstor/scratch/cscs/$USER:/capstor/scratch/cscs/$USER",
+"/capstor/store/cscs/swissai:/capstor/store/cscs/swissai"
+]
+
+[annotations.com.hooks.ssh]
+enabled = "true"
+```
+
+Then build the image from [indexing/environment/Dockerfile](indexing/environment/Dockerfile) (Elasticsearch 7.17.28 + python3/pandas/pyarrow/elasticsearch-client) and import it to the path referenced above:
+
+```bash
+cd indexing/environment
+podman build -t es-python .
+mkdir -p /capstor/scratch/cscs/$USER/containers
+enroot import -o /capstor/scratch/cscs/$USER/containers/es-python.sqsh podman://es-python
+```
+
+A prebuilt copy also lives at `/capstor/store/cscs/swissai/infra01/es_indices/containers/es-python.sqsh` if you'd rather copy it than rebuild — note it's on shared project storage, not guaranteed permanent, so rebuilding from the Dockerfile above is the durable path if it ever goes missing.
+
 ### 1. Start the index
 
 ```bash
@@ -25,7 +57,7 @@ This starts a 5-node Elasticsearch cluster on SLURM, billed to `--account`. If t
 | `--account ACC` | SLURM account to bill the job to | *(required)* |
 | `--nodes N` | SLURM nodes for ES cluster | `5` |
 | `--restore` | Force restore from snapshot (automatic when local data is absent) | — |
-| `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
+| `--snapshot-path P` | Snapshot repo path | `/capstor/store/cscs/swissai/infra01/es_indices/apertus-index` |
 | `--index NAME` | ES index name | `apertus-data` |
 | `--data-dir DIR` | ES data directory on scratch | `$SCRATCH/es-data-apertus-data` |
 
@@ -180,6 +212,6 @@ python3 tests/smoke_test.py --es-host <es-host> --es-port 9200 --index apertus-d
 | Documents | 4,847,028,638 |
 | On-disk size | ~17 TB |
 | Datasets | 20 (web, Wikipedia, code, math, books, multilingual, alignment, …) |
-| Snapshot | `/capstor/store/cscs/swissai/a145/es_indices_2026/apertus-index` |
+| Snapshot | `/capstor/store/cscs/swissai/infra01/es_indices/apertus-index` |
 
 For details on building a new index, see [indexing/README.md](indexing/README.md).

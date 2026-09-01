@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=normal
-#SBATCH --account=a145
+#SBATCH --account=infra01
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
