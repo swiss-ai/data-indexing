@@ -2,6 +2,7 @@
 """Apertus Data Search — FastAPI proxy for the ES pretraining index."""
 
 import html
+import logging
 import os
 import re
 from typing import List, Optional
@@ -11,11 +12,65 @@ from fastapi import FastAPI, HTTPException, Query as QParam
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import apikeys
+
 ES_HOST = os.environ.get("ES_HOST", "localhost")
 ES_PORT = int(os.environ.get("ES_PORT", "9200"))
 ES_INDEX = os.environ.get("ES_INDEX", "apertus-data")
 
+# ── API-key mode ──────────────────────────────────────────────────────────────
+# Off by default, so the browser-facing deployment behaves exactly as before and
+# keeps its oauth2-proxy login. The separate API deployment sets this to true.
+REQUIRE_API_KEY = os.environ.get("REQUIRE_API_KEY", "false").lower() == "true"
+API_KEYS_FILE = os.environ.get("API_KEYS_FILE", "/etc/apertus-search/api-keys.json")
+# A single request asking Elasticsearch for thousands of documents is what
+# actually hurts a 4.85B-document index, so the ceiling is per-request rather
+# than a rate limit.
+MAX_PAGE_SIZE = int(os.environ.get("MAX_PAGE_SIZE", "100"))
+
+log = logging.getLogger("uvicorn.error")
+
 app = FastAPI(title="Apertus Data Search", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def require_api_key(request, call_next):
+    """Gate every /api/ route when running in API mode.
+
+    Deliberately a middleware rather than a per-route dependency: a route added
+    later is protected without anyone having to remember to decorate it. The
+    failure mode of forgetting is then a 401, not an open door onto the index.
+    """
+    path = request.url.path
+    if REQUIRE_API_KEY and path.startswith("/api/"):
+        presented = request.headers.get("x-api-key")
+        if not presented:
+            # Also accept the Bearer convention, which most HTTP clients and
+            # API tools reach for first.
+            auth = request.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
+                presented = auth[7:].strip()
+
+        name = apikeys.verify(presented, API_KEYS_FILE)
+        if not name:
+            log.warning("rejected %s %s: %s api key",
+                        request.method, path, "missing" if not presented else "invalid")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Valid API key required. Send it as the "
+                                   "X-API-Key header (or Authorization: Bearer <key>)."},
+            )
+        # Attribution: which key ran which query, without logging the key itself.
+        log.info("%s %s key=%s", request.method, path, name)
+
+    return await call_next(request)
+
+
+@app.get("/healthz")
+def healthz():
+    """Liveness for Kubernetes. Unauthenticated and deliberately uninformative —
+    /api/health reports ES status and document counts, so it stays behind the key."""
+    return {"status": "ok"}
 
 
 def es_client() -> Elasticsearch:
@@ -100,8 +155,10 @@ def search(
     date_to: Optional[str] = None,
     include_no_lang: bool = False,
     include_no_date: bool = False,
-    page: int = 0,
-    size: int = 10,
+    page: int = QParam(default=0, ge=0),
+    # Bounded so one caller cannot ask for 10,000 documents in a single request.
+    # The UI only ever asks for a page's worth, so this is invisible to it.
+    size: int = QParam(default=10, ge=1, le=MAX_PAGE_SIZE),
 ):
     es = es_client()
 
@@ -247,6 +304,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(BASE, "images")
 STATIC_DIR = os.path.join(BASE, "static")
 
-if os.path.isdir(IMAGES_DIR):
-    app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+# In API mode there is no browser UI to serve: the page's own fetches would get
+# a 401, since it has no key. Serving only the API also keeps the public host's
+# surface down to the documented endpoints.
+if not REQUIRE_API_KEY:
+    if os.path.isdir(IMAGES_DIR):
+        app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
