@@ -5,7 +5,7 @@ import html
 import logging
 import os
 import re
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from elasticsearch import Elasticsearch
 from fastapi import FastAPI, HTTPException, Query as QParam
@@ -82,6 +82,103 @@ def es_client() -> Elasticsearch:
     )
 
 
+# Phrase queries and exact totals over 4.85B documents can run for minutes. With the
+# default client they would be cut at 30s and then re-sent twice, tripling the load for
+# nothing. This client waits up to just under the ingress's 300s and never retries a
+# timed-out query.
+HEAVY_REQUEST_TIMEOUT = int(os.environ.get("HEAVY_REQUEST_TIMEOUT", "290"))
+
+
+def es_heavy_client() -> Elasticsearch:
+    return Elasticsearch(
+        [{"host": ES_HOST, "port": ES_PORT, "scheme": "http"}],
+        timeout=HEAVY_REQUEST_TIMEOUT,
+        max_retries=0,
+        retry_on_timeout=False,
+    )
+
+
+# ── Query building ────────────────────────────────────────────────────────────
+# Matching runs on the analyzed `text` field (standard tokenizer, lowercase,
+# asciifolding, html_strip; positions indexed), so "phrase" means the exact word
+# sequence up to case, accents and punctuation.
+Mode = Literal["all", "any", "phrase"]
+
+
+def text_clause(q: str, mode: str, slop: int) -> dict:
+    """all: every word, any order (the original behaviour). any: at least one word.
+    phrase: the words in order, at most `slop` position moves apart."""
+    if mode == "phrase":
+        return {"match_phrase": {"text": {"query": q, "slop": slop}}}
+    return {"match": {"text": {"query": q, "operator": "and" if mode == "all" else "or"}}}
+
+
+def phrase_clause(p: str, slop: int) -> dict:
+    return {"match_phrase": {"text": {"query": p, "slop": slop}}}
+
+
+def build_filters(datasets, languages, date_from, date_to, include_no_lang, include_no_date) -> list:
+    no_lang_clause = {"bool": {"must_not": {"exists": {"field": "language"}}}}
+    no_date_clause = {"bool": {"must_not": {"exists": {"field": "date"}}}}
+
+    filters = []
+    if datasets:
+        filters.append({"terms": {"datasets": datasets}})
+
+    if languages and include_no_lang:
+        filters.append({
+            "bool": {
+                "should": [{"terms": {"language": languages}}, no_lang_clause],
+                "minimum_should_match": 1,
+            }
+        })
+    elif languages:
+        filters.append({"terms": {"language": languages}})
+
+    if date_from or date_to:
+        dr: dict = {}
+        if date_from:
+            dr["gte"] = date_from
+        if date_to:
+            dr["lte"] = date_to
+        if include_no_date:
+            filters.append({
+                "bool": {
+                    "should": [{"range": {"date": dr}}, no_date_clause],
+                    "minimum_should_match": 1,
+                }
+            })
+        else:
+            filters.append({"range": {"date": dr}})
+    return filters
+
+
+def build_query(q, mode, slop, must, should, must_not, filters) -> dict:
+    """`q` is matched per `mode`. The optional boolean lists are phrases (same `slop`):
+    every `must` phrase, at least one `should` phrase, no `must_not` phrase."""
+    must_clauses = ([text_clause(q, mode, slop)] if q else []) + [phrase_clause(p, slop) for p in must]
+    should_clauses = [phrase_clause(p, slop) for p in should]
+    must_not_clauses = [phrase_clause(p, slop) for p in must_not]
+
+    if not (should_clauses or must_not_clauses or filters) and len(must_clauses) <= 1:
+        # Same shape as before for a plain query, so UI scoring is unchanged.
+        return must_clauses[0] if must_clauses else {"match_all": {}}
+
+    query: dict = {"must": must_clauses or [{"match_all": {}}]}
+    if should_clauses:
+        query["should"] = should_clauses
+        query["minimum_should_match"] = 1
+    if must_not_clauses:
+        query["must_not"] = must_not_clauses
+    if filters:
+        query["filter"] = filters
+    return {"bool": query}
+
+
+def _clean(values: List[str]) -> List[str]:
+    return [v.strip() for v in values if v and v.strip()]
+
+
 def sanitize_snippet(raw: str) -> str:
     """Escape HTML in snippet but preserve <mark> highlight tags from ES."""
     if not raw:
@@ -149,6 +246,14 @@ def aggregations():
 @app.get("/api/search")
 def search(
     q: str = "",
+    mode: Mode = "all",
+    slop: int = QParam(default=0, ge=0),
+    must: List[str] = QParam(default=[]),
+    should: List[str] = QParam(default=[]),
+    must_not: List[str] = QParam(default=[]),
+    # Default totals stop counting at 10,000 (total_relation "gte"); exact_total counts
+    # every match, which costs more on common queries. /api/count is cheaper still.
+    exact_total: bool = False,
     datasets: List[str] = QParam(default=[]),
     languages: List[str] = QParam(default=[]),
     date_from: Optional[str] = None,
@@ -160,48 +265,13 @@ def search(
     # The UI only ever asks for a page's worth, so this is invisible to it.
     size: int = QParam(default=10, ge=1, le=MAX_PAGE_SIZE),
 ):
-    es = es_client()
-
-    no_lang_clause = {"bool": {"must_not": {"exists": {"field": "language"}}}}
-    no_date_clause = {"bool": {"must_not": {"exists": {"field": "date"}}}}
-
-    filters = []
-    if datasets:
-        filters.append({"terms": {"datasets": datasets}})
-
-    if languages and include_no_lang:
-        filters.append({
-            "bool": {
-                "should": [{"terms": {"language": languages}}, no_lang_clause],
-                "minimum_should_match": 1,
-            }
-        })
-    elif languages:
-        filters.append({"terms": {"language": languages}})
-
-    if (date_from or date_to) and include_no_date:
-        dr: dict = {}
-        if date_from:
-            dr["gte"] = date_from
-        if date_to:
-            dr["lte"] = date_to
-        filters.append({
-            "bool": {
-                "should": [{"range": {"date": dr}}, no_date_clause],
-                "minimum_should_match": 1,
-            }
-        })
-    elif date_from or date_to:
-        dr = {}
-        if date_from:
-            dr["gte"] = date_from
-        if date_to:
-            dr["lte"] = date_to
-        filters.append({"range": {"date": dr}})
-
     q = q.strip()
-    must = {"match": {"text": {"query": q, "operator": "and"}}} if q else {"match_all": {}}
-    query = {"bool": {"must": must, "filter": filters}} if filters else must
+    must, should, must_not = _clean(must), _clean(should), _clean(must_not)
+    filters = build_filters(datasets, languages, date_from, date_to, include_no_lang, include_no_date)
+    query = build_query(q, mode, slop, must, should, must_not, filters)
+    # The original mode and no extras keeps the original client, so the UI is unaffected.
+    heavy = exact_total or mode == "phrase" or bool(must or should or must_not)
+    es = es_heavy_client() if heavy else es_client()
 
     body: dict = {
         "query": query,
@@ -209,8 +279,10 @@ def search(
         "from": min(page * size, 9990),
         "size": size,
     }
+    if exact_total:
+        body["track_total_hits"] = True
 
-    if q:
+    if q or must or should:
         body["highlight"] = {
             "fields": {
                 "text": {
@@ -248,7 +320,43 @@ def search(
             "snippet": snippet,
         })
 
-    return {"total": res["hits"]["total"]["value"], "page": page, "size": size, "hits": hits}
+    total = res["hits"]["total"]
+    return {
+        "total": total["value"],
+        # "eq": exact. "gte": at least `total` (Elasticsearch stopped counting at 10,000).
+        "total_relation": total.get("relation", "eq"),
+        "page": page,
+        "size": size,
+        "hits": hits,
+    }
+
+
+@app.get("/api/count")
+def count(
+    q: str = "",
+    mode: Mode = "all",
+    slop: int = QParam(default=0, ge=0),
+    must: List[str] = QParam(default=[]),
+    should: List[str] = QParam(default=[]),
+    must_not: List[str] = QParam(default=[]),
+    datasets: List[str] = QParam(default=[]),
+    languages: List[str] = QParam(default=[]),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    include_no_lang: bool = False,
+    include_no_date: bool = False,
+):
+    """Exact number of matching documents (no ranking, no 10,000 cap). Same query
+    parameters as /api/search."""
+    q = q.strip()
+    must, should, must_not = _clean(must), _clean(should), _clean(must_not)
+    filters = build_filters(datasets, languages, date_from, date_to, include_no_lang, include_no_date)
+    query = build_query(q, mode, slop, must, should, must_not, filters)
+    try:
+        res = es_heavy_client().count(index=ES_INDEX, body={"query": query})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"count": res["count"], "exact": True}
 
 
 @app.get("/api/similar/{doc_id}")

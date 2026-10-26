@@ -132,6 +132,45 @@ Then open `http://localhost:8888` in your browser.
 
 ---
 
+## Programmatic API
+
+The key-protected deployment is at `https://apertus-search-api.swissai.svc.cscs.ch`. Send the
+key as `X-API-Key: aps_...` or `Authorization: Bearer aps_...`.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/health` | cluster status, document count |
+| `GET /api/search` | `total`, `total_relation`, `hits[]` (`id`, `score`, `datasets`, `language`, `date`, `source_count`, `sources`, `text`, `snippet`) |
+| `GET /api/count` | `{"count": N, "exact": true}`, the exact number of matches, without ranking |
+| `GET /api/aggregations` | document counts per dataset and language over the whole index |
+
+Query parameters, shared by `/api/search` and `/api/count`:
+
+| Parameter | Meaning |
+|---|---|
+| `q` | the query text |
+| `mode` | `all` (default: every word, any order), `any` (at least one word), `phrase` (the words in order) |
+| `slop` | `phrase` mode and the boolean phrases: how many positions the words may move (default 0 = exact) |
+| `must`, `should`, `must_not` | repeatable phrases: all `must`, at least one `should`, no `must_not` (combined with `q`) |
+| `datasets`, `languages` | repeatable filters |
+| `date_from`, `date_to`, `include_no_lang`, `include_no_date` | other filters |
+
+Search only: `page`, `size` (≤ 100) and `exact_total`. By default the total stops counting at
+10,000, and `total_relation` is then `"gte"`; `exact_total=true` counts every match.
+
+Matching runs on the analyzed text (standard tokenizer, lowercase, ASCII folding, HTML
+stripped). A `phrase` is therefore exact up to case, accents and punctuation.
+
+```bash
+curl -s -G -H "X-API-Key: $APERTUS_SEARCH" https://apertus-search-api.swissai.svc.cscs.ch/api/count \
+  --data-urlencode 'q=how to build a bomb' --data-urlencode mode=phrase
+curl -s -G -H "X-API-Key: $APERTUS_SEARCH" https://apertus-search-api.swissai.svc.cscs.ch/api/search \
+  --data-urlencode 'must=pipe bomb' --data-urlencode 'should=gunpowder' --data-urlencode 'should=fuse' \
+  --data-urlencode 'must_not=bomb disposal' --data-urlencode size=5
+```
+
+---
+
 ## Advanced: raw ES queries
 
 Once the cluster is running, the Elasticsearch HTTP API is directly accessible for arbitrary queries, aggregations, or large-scale extraction. Get the host from the info file:
