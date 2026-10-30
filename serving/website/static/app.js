@@ -372,6 +372,12 @@ const GROUPS = [
 /* ─── State ─────────────────────────────────────────────────────── */
 const S = {
   query:       "",
+  mode:        "all",    // "all" | "any" | "phrase" (server: /api/search?mode=)
+  slop:        0,
+  must:        [],       // phrases, one per textarea line
+  should:      [],
+  mustNot:     [],
+  exactTotal:  false,
   page:        0,
   selDS:       new Set(),
   selLangs:    new Set(),
@@ -450,6 +456,23 @@ function bindGlobal() {
   $("reset-btn").addEventListener("click",  resetFilters);
   $("incl-no-lang").addEventListener("change", e => { S.inclNoLang = e.target.checked; doSearch(true); });
   $("incl-no-date").addEventListener("change", e => { S.inclNoDate = e.target.checked; doSearch(true); });
+
+  // Search mode and phrase conditions
+  document.querySelectorAll('input[name="match-mode"]').forEach(r => {
+    r.addEventListener("change", e => { S.mode = e.target.value; renderMode(); if (hasQuery()) doSearch(true); });
+  });
+  $("slop-input").addEventListener("change", e => {
+    S.slop = Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0));
+    e.target.value = S.slop;
+    if (hasQuery()) doSearch(true);
+  });
+  $("adv-apply").addEventListener("click", () => { readPhrases(); doSearch(true); });
+  ["must-input", "should-input", "mustnot-input"].forEach(id => {
+    $(id).addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { readPhrases(); doSearch(true); }
+    });
+  });
+  $("exact-total").addEventListener("change", e => { S.exactTotal = e.target.checked; if (hasQuery()) doSearch(true); });
 
   // Panel nav buttons
   document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -643,10 +666,41 @@ function buildPeople() {
 </div>`;
 }
 
+/* ─── Search mode ─────────────────────────────────────────────────── */
+const MODE_HELP = {
+  all:    "Every word must occur, in any order.",
+  any:    "At least one of the words must occur.",
+  phrase: "The words must occur together, in this order. Case, accents and punctuation are ignored.",
+};
+
+function renderMode() {
+  $("mode-help").textContent = MODE_HELP[S.mode];
+  $("slop-row").hidden = S.mode !== "phrase";
+  const n = S.must.length + S.should.length + S.mustNot.length;
+  const mb = $("badge-mode");
+  const label = [S.mode !== "all" ? S.mode : "", n ? `${n} phrase${n > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
+  mb.hidden = !label; mb.textContent = label;
+}
+
+function linesOf(id) {
+  return $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+}
+
+function readPhrases() {
+  S.must = linesOf("must-input"); S.should = linesOf("should-input"); S.mustNot = linesOf("mustnot-input");
+  if (S.must.length || S.should.length || S.mustNot.length) $("adv-box").open = true;
+  renderMode();
+}
+
+function hasQuery() {
+  return Boolean(si.value.trim() || S.must.length || S.should.length || S.mustNot.length);
+}
+
 /* ─── Search ──────────────────────────────────────────────────────── */
 function doSearch(resetPage = false) {
   if (resetPage) S.page = 0;
   S.query = si.value;
+  readPhrases();
   runSearch();
 }
 
@@ -656,6 +710,12 @@ async function runSearch() {
 
   const p = new URLSearchParams();
   if (S.query)       p.set("q", S.query);
+  if (S.mode !== "all") p.set("mode", S.mode);
+  if (S.slop)        p.set("slop", S.slop);
+  S.must.forEach   (x => p.append("must",     x));
+  S.should.forEach (x => p.append("should",   x));
+  S.mustNot.forEach(x => p.append("must_not", x));
+  if (S.exactTotal)  p.set("exact_total", "true");
   S.selDS.forEach   (d => p.append("datasets",  d));
   S.selLangs.forEach(l => p.append("languages", l));
   if (S.dateFrom)    p.set("date_from", S.dateFrom);
@@ -690,12 +750,14 @@ function showLoading() {
 /* ─── Render results ─────────────────────────────────────────────── */
 function renderHeader() {
   if (!S.results) return;
-  const { total, hits, _error } = S.results;
+  const { total, total_relation, hits, _error } = S.results;
   if (_error) { $("results-header").textContent = `Error: ${_error}`; return; }
   if (total === 0) { $("results-header").textContent = "No results found."; return; }
   const from = S.page * 10 + 1, to = S.page * 10 + hits.length;
+  // "gte": Elasticsearch stopped counting at 10,000. "Count all matches exactly" gives the real number.
+  const totalTxt = total_relation === "gte" ? `${fmt(total)}+` : fmt(total);
   $("results-header").innerHTML =
-    `Showing <strong>${fmt(from)}–${fmt(to)}</strong> of <strong>${fmt(total)}</strong> results`;
+    `Showing <strong>${fmt(from)}–${fmt(to)}</strong> of <strong>${totalTxt}</strong> results`;
 }
 
 function renderResults() {
@@ -967,6 +1029,11 @@ function resetFilters() {
   $("date-from").value = ""; $("date-to").value = "";
   $("incl-no-lang").checked = false; $("incl-no-date").checked = false;
   S.langQ = ""; S.showAllL = false; $("lang-search").value = "";
+  S.mode = "all"; S.slop = 0; S.exactTotal = false;
+  document.querySelector('input[name="match-mode"][value="all"]').checked = true;
+  $("slop-input").value = 0; $("exact-total").checked = false;
+  ["must-input", "should-input", "mustnot-input"].forEach(id => { $(id).value = ""; });
+  $("adv-box").open = false;
   renderSidebar(); updateBadges(); doSearch(true);
 }
 

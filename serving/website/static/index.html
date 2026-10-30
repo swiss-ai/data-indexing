@@ -53,6 +53,40 @@
 
     <div class="sidebar-section">
       <h3 class="sidebar-title">
+        Search mode
+        <span id="badge-mode" class="active-badge" hidden></span>
+      </h3>
+      <div class="mode-switch" role="radiogroup" aria-label="Match mode">
+        <label><input type="radio" name="match-mode" value="all" checked><span>All words</span></label>
+        <label><input type="radio" name="match-mode" value="any"><span>Any word</span></label>
+        <label><input type="radio" name="match-mode" value="phrase"><span>Phrase</span></label>
+      </div>
+      <div class="null-note" id="mode-help">Every word must occur, in any order.</div>
+      <label class="slop-row" id="slop-row" hidden>
+        Words may be up to
+        <input type="number" id="slop-input" class="slop-input" min="0" max="50" value="0" aria-label="Phrase slop">
+        positions apart
+      </label>
+
+      <details class="adv-box" id="adv-box">
+        <summary>Phrase conditions</summary>
+        <div class="null-note">One phrase per line. Combined with the search bar.</div>
+        <label class="adv-label" for="must-input">Must contain all of</label>
+        <textarea id="must-input" class="adv-input" rows="2" spellcheck="false" placeholder="pipe bomb"></textarea>
+        <label class="adv-label" for="should-input">Must contain at least one of</label>
+        <textarea id="should-input" class="adv-input" rows="2" spellcheck="false" placeholder="gunpowder&#10;fuse"></textarea>
+        <label class="adv-label" for="mustnot-input">Must not contain</label>
+        <textarea id="mustnot-input" class="adv-input" rows="2" spellcheck="false" placeholder="bomb disposal"></textarea>
+        <button id="adv-apply" class="adv-apply">Apply</button>
+      </details>
+
+      <label class="null-toggle" style="margin-top:10px">
+        <input type="checkbox" id="exact-total"> Count all matches exactly (slower)
+      </label>
+    </div>
+
+    <div class="sidebar-section">
+      <h3 class="sidebar-title">
         Datasets
         <span id="badge-datasets" class="active-badge" hidden></span>
       </h3>
