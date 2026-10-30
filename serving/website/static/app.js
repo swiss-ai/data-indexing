@@ -972,43 +972,67 @@ function renderLangs() {
   }
   langSearchEl.style.display = "";
 
-  const all = S.aggs?.languages || [];
+  const all = langGroups();
   const q   = S.langQ;
   const filtered = q
-    ? all.filter(l => {
-        const name = langLabel(l.key).toLowerCase();
-        return l.key.toLowerCase().includes(q) || name.includes(q);
-      })
+    ? all.filter(g => g.label.toLowerCase().includes(q) || g.codes.some(c => c.toLowerCase().includes(q)))
     : all;
   const shown = S.showAllL ? filtered : filtered.slice(0, 25);
 
   $("language-filters").innerHTML =
     `<button class="section-toggle-btn" onclick="toggleLangsSection()">▾ Hide languages</button>` +
-    shown.map(l => `
-      <div class="filter-item" onclick="toggleLang('${esc(l.key)}')">
-        <input type="checkbox" id="lk-${l.key}" ${S.selLangs.has(l.key)?"checked":""} onclick="event.stopPropagation();toggleLang('${esc(l.key)}')">
-        <label for="lk-${l.key}">${esc(langLabel(l.key))}</label>
-        <span class="filter-count">${fmt(l.count)}</span>
-      </div>`).join("") +
+    shown.map(g => {
+      const i = all.indexOf(g);
+      const on = g.codes.every(c => S.selLangs.has(c));
+      return `
+      <div class="filter-item" onclick="toggleLangGroup(${i})" title="${esc(g.codes.join(", "))}">
+        <input type="checkbox" id="lk-${i}" ${on ? "checked" : ""} onclick="event.stopPropagation();toggleLangGroup(${i})">
+        <label for="lk-${i}">${esc(g.label)}${g.codes.length > 1 ? ` <span class="lang-codes">${esc(g.codes.join(", "))}</span>` : ""}</label>
+        <span class="filter-count">${fmt(g.count)}</span>
+      </div>`;
+    }).join("") +
     (filtered.length > 25 && !S.showAllL
       ? `<button class="show-more-btn" onclick="S.showAllL=true;renderLangs()">Show all ${filtered.length} languages</button>`
       : "");
 }
 
+// The index mixes ISO 639-1 and 639-3 codes for the same language (English is `en` in
+// the English web data and `eng` in FineWeb-2/Wikipedia), so the list merges codes that
+// share a display name: one checkbox selects all of them, with their summed count.
+// Distinct varieties keep their own names (Standard vs Egyptian Arabic) and stay separate.
+function langGroups() {
+  if (S._langGroupsFor === S.aggs) return S._langGroups;
+  const byLabel = new Map();
+  (S.aggs?.languages || []).forEach(l => {
+    const label = langLabel(l.key);
+    const g = byLabel.get(label) || { label, codes: [], count: 0 };
+    g.codes.push(l.key); g.count += l.count;
+    byLabel.set(label, g);
+  });
+  S._langGroups = [...byLabel.values()].sort((a, b) => b.count - a.count);
+  S._langGroupsFor = S.aggs;
+  return S._langGroups;
+}
+
+function toggleLangGroup(i) {
+  const g = langGroups()[i];
+  if (!g) return;
+  const on = g.codes.every(c => S.selLangs.has(c));
+  g.codes.forEach(c => on ? S.selLangs.delete(c) : S.selLangs.add(c));
+  renderLangs();
+  doSearch(true);
+}
+
 function updateBadges() {
   const db = $("badge-datasets"); db.hidden = !S.selDS.size;    db.textContent = S.selDS.size;
-  const lb = $("badge-langs");    lb.hidden = !S.selLangs.size; lb.textContent = S.selLangs.size;
+  // Count languages, not codes: English is two codes but one choice.
+  const nLangs = langGroups().filter(g => g.codes.some(c => S.selLangs.has(c))).length;
+  const lb = $("badge-langs");    lb.hidden = !nLangs;          lb.textContent = nLangs;
 }
 
 function toggleDS(name) {
   S.selDS.has(name) ? S.selDS.delete(name) : S.selDS.add(name);
   renderDatasets();
-  doSearch(true);
-}
-
-function toggleLang(code) {
-  S.selLangs.has(code) ? S.selLangs.delete(code) : S.selLangs.add(code);
-  renderLangs();
   doSearch(true);
 }
 
@@ -1097,7 +1121,7 @@ function trimUrl(u) {
 
 /* Expose for inline onclick (sidebar, pagination) */
 window.toggleDS   = toggleDS;
-window.toggleLang       = toggleLang;
+window.toggleLangGroup  = toggleLangGroup;
 window.gotoPage         = gotoPage;
 window.S                = S;
 window.renderLangs      = renderLangs;

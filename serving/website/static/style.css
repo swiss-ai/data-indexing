@@ -1034,3 +1034,5 @@ body {
   cursor: pointer;
 }
 .adv-apply:hover { background: var(--accent-hover); }
+
+.lang-codes { font-size: 10.5px; color: var(--text-muted); margin-left: 3px; }
